@@ -81,7 +81,7 @@ function xorPreset(): NetworkPreset {
   return {
     id: 'xor',
     name: 'Hand-built XOR (ReLU 2-2-2)',
-    description: 'A four-weight network computing XOR exactly. Every weight is a small integer, so INT8 and FP8 represent it exactly.',
+    description: 'A four-weight network computing XOR exactly. Every weight is a small integer, so an unscaled FP8 or BF16 cast represents it exactly; scaled formats generally do not (an INT8 scale of max|w|/127 puts −4 at −4.03…, and a rounded FP32 scale perturbs FP8 values slightly).',
     network,
     ...d,
     plotRange: { x: [-0.6, 1.6], y: [-0.6, 1.6] },

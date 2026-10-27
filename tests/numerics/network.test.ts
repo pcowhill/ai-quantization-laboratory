@@ -62,6 +62,17 @@ describe('network semantics', () => {
     expect(Array.from(t.layers[2]!.inputUsed)).not.toEqual(Array.from(t.layers[2]!.input));
     expect(Array.from(prep.weights[0]!)).toEqual(moons.network.layers[0]!.weights);
   });
+  it('static calibration works with stochastic activation rounding and is reproducible', () => {
+    const q: NetworkQuant = {
+      layers: moons.network.layers.map(() => ({ weight: null, activation: makeQuantConfig({ format: 'int8', rounding: 'stochastic', seed: 5 }), arith: null })),
+      activationCalibration: 'static',
+    };
+    const prep = prepareNetwork(moons.network, q, moons.samples.slice(0, 50));
+    const a = forward(prep, moons.samples[3]!);
+    const b = forward(prep, moons.samples[3]!);
+    expect(Array.from(a.output)).toEqual(Array.from(b.output));
+    expect(Array.from(a.layers[1]!.inputUsed)).not.toEqual(Array.from(a.layers[1]!.input));
+  });
   it('static calibration fixes activation scales across inputs', () => {
     const q: NetworkQuant = { layers: moons.network.layers.map(() => ({ weight: null, activation: makeQuantConfig({ format: 'int8' }), arith: null })), activationCalibration: 'static' };
     const prep = prepareNetwork(moons.network, q, moons.samples.slice(0, 50));

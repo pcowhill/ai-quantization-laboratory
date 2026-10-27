@@ -101,7 +101,7 @@ const showLabels = computed(() => columns.value.every((c) => c <= 16));
 </script>
 
 <template>
-  <svg :viewBox="`0 0 ${W} ${H}`" class="net" role="img" :aria-label="`Network with layer sizes ${columns.join(', ')}`">
+  <svg :viewBox="`0 0 ${W} ${H}`" class="net" role="group" :aria-label="`Network with layer sizes ${columns.join(', ')}`">
     <g class="edges">
       <line
         v-for="e in edges"
@@ -128,6 +128,7 @@ const showLabels = computed(() => columns.value.every((c) => c <= 16));
         :aria-label="n.title"
         @click="emit('select', { layer: n.layer, unit: n.unit, input: n.input })"
         @keydown.enter="emit('select', { layer: n.layer, unit: n.unit, input: n.input })"
+        @keydown.space.prevent="emit('select', { layer: n.layer, unit: n.unit, input: n.input })"
       >
         <title>{{ n.title }}</title>
         <circle :cx="n.x" :cy="n.y" :r="n.r + 3" fill="transparent" />

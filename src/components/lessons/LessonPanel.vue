@@ -31,9 +31,9 @@ function showMe() {
     <header>
       <span class="eyebrow">Lesson · {{ lesson.level }}</span>
       <h2>{{ lesson.title }}</h2>
-      <div class="progress" role="progressbar" :aria-valuenow="lessons.stepIndex + 1" aria-valuemin="1" :aria-valuemax="lesson.steps.length" :aria-label="`Step ${lessons.stepIndex + 1} of ${lesson.steps.length}`">
-        <button v-for="(st, i) in lesson.steps" :key="i" type="button" class="dot" :class="{ on: i === lessons.stepIndex, past: i < lessons.stepIndex }" :aria-label="`Go to step ${i + 1}: ${st.title}`" @click="lessons.goTo(i)" />
-      </div>
+      <nav class="progress" :aria-label="`Lesson steps: step ${lessons.stepIndex + 1} of ${lesson.steps.length}`">
+        <button v-for="(st, i) in lesson.steps" :key="i" type="button" class="dot" :class="{ on: i === lessons.stepIndex, past: i < lessons.stepIndex }" :aria-label="`Go to step ${i + 1}: ${st.title}`" :aria-current="i === lessons.stepIndex ? 'step' : undefined" @click="lessons.goTo(i)" />
+      </nav>
     </header>
     <div class="body" aria-live="polite">
       <h3>{{ lessons.stepIndex + 1 }}. {{ step.title }}</h3>

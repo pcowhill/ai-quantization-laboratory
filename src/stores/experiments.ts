@@ -89,21 +89,34 @@ export const useExperimentsStore = defineStore('experiments', () => {
     scheduleSave();
   }
 
-  function undo() {
+  /**
+   * Moves one step through the history. The stacks change only after the
+   * target state has been restored, so an unreadable entry leaves them
+   * consistent; such an entry is discarded (it could never be restored).
+   */
+  function step(from: typeof past, to: typeof future) {
     flushHistory();
-    const prev = past.value.pop();
-    if (prev === undefined) return;
-    future.value.push(lastSerialized);
-    restoreSerialized(prev);
+    const target = from.value[from.value.length - 1];
+    if (target === undefined) return;
+    const cur = lastSerialized;
+    try {
+      restoreSerialized(target);
+    } catch (e) {
+      from.value.pop();
+      console.error('Discarded an unreadable history entry', e);
+      return;
+    }
+    from.value.pop();
+    to.value.push(cur);
+  }
+
+  function undo() {
+    step(past, future);
   }
 
   function redo() {
-    // A pending (not yet recorded) edit supersedes the redo stack.
-    flushHistory();
-    const next = future.value.pop();
-    if (next === undefined) return;
-    past.value.push(lastSerialized);
-    restoreSerialized(next);
+    // A pending (not yet recorded) edit supersedes the redo stack (flushHistory clears it).
+    step(future, past);
   }
 
   watch(

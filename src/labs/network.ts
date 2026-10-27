@@ -69,8 +69,11 @@ export function prepareVariant(net: NetworkDef, v: NetworkVariant, samples: numb
   }
 }
 
-/** Evaluates the baseline and every enabled variant on all samples. */
-export function evaluateNetwork(s: NetworkState, maxSamples = 400): NetworkEvaluation {
+/** Samples beyond this many are kept but not evaluated (nor used for static calibration). */
+export const EVAL_SAMPLE_LIMIT = 400;
+
+/** Evaluates the baseline and every enabled variant on the first EVAL_SAMPLE_LIMIT samples. */
+export function evaluateNetwork(s: NetworkState, maxSamples = EVAL_SAMPLE_LIMIT): NetworkEvaluation {
   const issues = validateNetwork(s.network).map((i) => i.message);
   const empty: NetworkEvaluation = { issues, baseline: null, baselinePredictions: [], baselineAccuracy: null, variants: [], summaries: [], baselineTrace: null, variantTraces: {} };
   if (issues.length) return empty;

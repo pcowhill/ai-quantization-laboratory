@@ -49,7 +49,7 @@ export const NETWORK_SCENARIOS: NetworkScenario[] = [
     title: 'Small errors grow through many layers',
     presetId: 'deep-chain',
     description: 'A 7-layer tanh chain with gain 4. Only the first layer is quantized (FP8 E4M3 weights); every later layer is exact.',
-    lookFor: 'The per-layer relative error rises from layer to layer even though later layers are full precision.',
+    lookFor: 'Later layers are full precision, yet they never remove the error introduced in layer 1: the per-layer relative error dips at some layers but ends several times larger at the output than after layer 1.',
     variants: (net) => [
       v('n1', 'Layer 1 weights in FP8 E4M3', all(net, (i) => ({ weight: i === 0 ? weightConfig({ format: 'fp8_e4m3', granularity: 'tensor' }) : null, activation: null, arith: null }))),
       v('n2', 'All arithmetic in BF16', all(net, () => ({ weight: null, activation: null, arith: { ...DEFAULT_ARITH_CONFIG, productFormat: 'bf16', accumulatorFormat: 'bf16', outputFormat: 'bf16' } }))),

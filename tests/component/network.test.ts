@@ -88,3 +88,69 @@ describe('Lessons', () => {
     expect(lessons.completed).toContain('point-one');
   });
 });
+
+describe('review fixes (M4)', () => {
+  it('choosing per-channel activation scaling yields a valid axis', async () => {
+    const pinia = createPinia();
+    setActivePinia(pinia);
+    const w = mount(NetworkLab, { global: { plugins: [pinia] } });
+    await settle();
+    // Earlier tests' components stay mounted and can switch the active Pinia, so stores are taken explicitly.
+    const lab = useLabStore(pinia);
+    await w.get('[data-testid="nn-act-quant"]').setValue(true);
+    // The activation editor is the one containing the "nna-format" control.
+    let editor = w.get('[data-testid="nna-format"]').element as HTMLElement;
+    while (!editor.querySelector('[aria-label="Granularity"]')) editor = editor.parentElement!;
+    const perChannel = [...editor.querySelectorAll<HTMLElement>('[aria-label="Granularity"] [role="radio"]')].find((b) => b.textContent!.trim() === 'Per-channel')!;
+    perChannel.click();
+    await flushPromises();
+    const act = lab.state.network.variants.find((v) => v.id === lab.state.network.activeVariantId)!.layers[0]!.activation!;
+    expect(act.granularity).toBe('channel');
+    expect(act.axis).toBe(1);
+    expect(w.text()).not.toContain('per-feature scaling uses axis 1');
+    w.unmount();
+  });
+
+  it('lesson Back and step dots replay earlier setups', async () => {
+    const pinia = createPinia();
+    setActivePinia(pinia);
+    const exps = useExperimentsStore(pinia);
+    await exps.init();
+    const lessons = useLessonsStore(pinia);
+    const lab = useLabStore(pinia);
+    lessons.start('networks');
+    lessons.next();
+    const atStep2 = JSON.stringify(lab.state);
+    lessons.next();
+    expect(JSON.stringify(lab.state)).not.toBe(atStep2);
+    lessons.prev();
+    expect(JSON.stringify(lab.state)).toBe(atStep2);
+    lessons.goTo(0);
+    lessons.goTo(1);
+    expect(JSON.stringify(lab.state)).toBe(atStep2);
+    lessons.exit();
+  });
+
+  it('an unreadable history entry is discarded without corrupting undo/redo', async () => {
+    const pinia = createPinia();
+    setActivePinia(pinia);
+    const exps = useExperimentsStore(pinia);
+    await exps.init();
+    const lab = useLabStore(pinia);
+    const initial = JSON.stringify(lab.state);
+    const v = lab.state.network.variants[0]!;
+    v.layers[0]!.activation = { ...v.layers[0]!.weight!, granularity: 'channel', axis: 0 }; // semantically invalid
+    await flushPromises();
+    exps.flushHistory();
+    await new Promise((r) => setTimeout(r, 400));
+    lab.state.network.variants[0]!.layers[0]!.activation = null;
+    await new Promise((r) => setTimeout(r, 400));
+    const before = JSON.stringify(lab.state);
+    exps.undo(); // target is the invalid state: discarded, nothing changes
+    expect(JSON.stringify(lab.state)).toBe(before);
+    expect(() => exps.undo()).not.toThrow(); // the valid initial state is restored
+    expect(JSON.stringify(lab.state)).toBe(initial);
+    exps.redo();
+    expect(JSON.stringify(lab.state)).toBe(before);
+  });
+});

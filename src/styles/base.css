@@ -265,6 +265,17 @@ textarea.input {
 .table tbody tr:hover {
   background: var(--accent-softer);
 }
+.row-select {
+  all: unset;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  border-radius: 3px;
+}
+.row-select:focus-visible {
+  outline: 2px solid var(--focus);
+  outline-offset: 2px;
+}
 .table tr.selected {
   background: var(--accent-soft);
 }

@@ -106,7 +106,7 @@ export const LESSONS: Lesson[] = [
       },
       {
         title: 'Precision in BF16',
-        body: '<p>BF16 has only 7 fraction bits. Near 1 its spacing is 2⁻⁷ = 0.0078125, so 1.001 rounds to exactly 1 — the small difference disappears. FP16 keeps it (1.0009765625).</p>',
+        body: '<p>BF16 has only 7 fraction bits. Near 1 its spacing is 2⁻⁷ = 0.0078125, so the input 1.01 is stored as 1.0078125, while FP16 (spacing 2⁻¹⁰) stores 1.009765625. Smaller differences vanish entirely: 1.001 rounds to exactly 1 in BF16, while FP16 keeps it (1.0009765625).</p>',
         setup: (s) => inspector(s, '1.01', 'bf16'),
         task: { prompt: 'Find a number that BF16 stores as exactly 1 but FP16 does not (try values between 1 and 1.004).', check: (s) => { const v = Number(s.inspector.input); return v > 1.0004883 && v < 1.00390625 && s.inspector.bitsOverride === null; }, success: 'Anything in (1 + 2⁻¹¹, 1 + 2⁻⁸] behaves like this: invisible to BF16, visible to FP16.', solve: (s) => { s.inspector.bitsOverride = null; s.inspector.input = '1.002'; } },
       },
@@ -376,7 +376,7 @@ export const LESSONS: Lesson[] = [
       },
       {
         title: 'Errors propagate',
-        body: '<p>In this deep chain only the first layer is quantized, yet the per-layer error keeps growing: each layer amplifies the perturbation it receives. The <em>Error propagation</em> chart shows the relative error layer by layer.</p>',
+        body: '<p>In this deep chain only the first layer is quantized, yet the error does not fade: every later layer carries the perturbation on, some layers amplify it, and it ends several times larger at the output than after layer 1 (it is not monotonic — a saturating tanh can also damp it). The <em>Error propagation</em> chart shows the relative error layer by layer.</p>',
         setup: (s) => (s.network = applyScenario('propagation')),
       },
       {

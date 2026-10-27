@@ -38,7 +38,12 @@ const wOn = computed({ get: () => lq.value.weight !== null, set: (v: boolean) =>
 const aOn = computed({ get: () => lq.value.activation !== null, set: (v: boolean) => setLayer({ activation: v ? activationConfig({ format: 'int8' }) : null }) });
 const arOn = computed({ get: () => lq.value.arith !== null, set: (v: boolean) => setLayer({ arith: v ? { ...DEFAULT_ARITH_CONFIG } : null }) });
 const wCfg = computed({ get: () => lq.value.weight!, set: (c: QuantConfig) => setLayer({ weight: c }) });
-const aCfg = computed({ get: () => lq.value.activation!, set: (c: QuantConfig) => setLayer({ activation: c }) });
+// Activations are a [1, features] vector: per-feature scales run along axis 1 and
+// feature groups along axis 0, so the axis follows the granularity.
+const aCfg = computed({
+  get: () => lq.value.activation!,
+  set: (c: QuantConfig) => setLayer({ activation: { ...c, axis: c.granularity === 'channel' ? 1 : c.granularity === 'group' ? 0 : c.axis } }),
+});
 const arCfg = computed({ get: () => lq.value.arith!, set: (c) => setLayer({ arith: c }) });
 
 function applyToAll() {
@@ -56,7 +61,7 @@ const issues = computed(() => validateNetworkQuant(props.net, { layers: variant.
         <thead><tr><th>Layer</th><th>Weights</th><th>Input activations</th><th>Arithmetic</th></tr></thead>
         <tbody>
           <tr v-for="(l, i) in variant.layers.slice(0, L)" :key="i" :class="{ selected: i === layer }" style="cursor: pointer" @click="layer = i">
-            <th scope="row">{{ i + 1 }}</th>
+            <th scope="row"><button type="button" class="row-select" :aria-pressed="i === layer" :aria-label="`Edit layer ${i + 1}`" @click.stop="layer = i">{{ i + 1 }}</button></th>
             <td>{{ summary(l.weight) }}</td>
             <td>{{ summary(l.activation) }}</td>
             <td>{{ l.arith ? `${getFormat(l.arith.productFormat).name}×/${getFormat(l.arith.accumulatorFormat).name}+` : 'FP64' }}</td>

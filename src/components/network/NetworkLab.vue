@@ -10,6 +10,7 @@ import { variantSlot } from '@/composables/useWorkbench';
 import { networkStateFromPreset, defaultNetworkVariants } from '@/state/defaults';
 import { plainClone } from '@/state/clone';
 import { DataParseError, parseDelimited } from '@/labs/importData';
+import { EVAL_SAMPLE_LIMIT } from '@/labs/network';
 import { useLabStore } from '@/stores/lab';
 import { usePalette } from '@/ui/usePalette';
 import { decisionChart, outputsChart, propagationChart, type NamedTrace } from '@/ui/charts/network';
@@ -268,6 +269,7 @@ function applyWeights() {
       <Section title="Quantized variants">
         <ul class="vlist">
           <li v-for="v in s.variants" :key="v.id" class="vitem" :class="{ active: v.id === s.activeVariantId }" @click="s.activeVariantId = v.id">
+            <input type="radio" name="nn-active-variant" :checked="v.id === s.activeVariantId" :aria-label="`Edit ${v.name}`" @change="s.activeVariantId = v.id" @click.stop />
             <span class="swatch" :style="{ background: `var(--series-${variantSlot(v.id) + 1})` }" />
             <input class="vname" :value="v.name" :aria-label="`Name of variant ${v.id}`" @change="v.name = ($event.target as HTMLInputElement).value.trim().slice(0, 80) || v.name" @click.stop />
             <input v-model="v.enabled" type="checkbox" :aria-label="`Include ${v.name}`" @click.stop />
@@ -309,7 +311,7 @@ function applyWeights() {
 
       <div class="card">
         <div class="card-header">
-          <h2>Predictions on {{ s.samples.length }} samples <span v-if="computing" class="badge" role="status">computing…</span></h2>
+          <h2>Predictions on {{ s.samples.length > EVAL_SAMPLE_LIMIT ? `the first ${EVAL_SAMPLE_LIMIT} of ${s.samples.length}` : s.samples.length }} samples <span v-if="computing" class="badge" role="status">computing…</span></h2>
           <span class="muted small">Baseline = FP64 weights, activations and arithmetic.</span>
         </div>
         <div class="card-body table-wrap">
@@ -331,7 +333,9 @@ function applyWeights() {
                 <td class="num">—</td><td class="num">—</td><td class="num">—</td><td class="num">—</td>
               </tr>
               <tr v-for="x in summaries" :key="x.id" :class="{ selected: x.id === s.activeVariantId }" style="cursor: pointer" @click="s.activeVariantId = x.id">
-                <th scope="row"><span class="sw" :style="{ background: `var(--series-${x.slot + 1})` }" />{{ x.name }}</th>
+                <th scope="row">
+                  <button type="button" class="row-select" :aria-pressed="x.id === s.activeVariantId" :title="`Edit ${x.name}`" @click.stop="s.activeVariantId = x.id"><span class="sw" :style="{ background: `var(--series-${x.slot + 1})` }" />{{ x.name }}</button>
+                </th>
                 <td v-if="s.labels" class="num">{{ pct(x.accuracy, 1) }}</td>
                 <td class="num" data-metric="agreement">{{ pct(x.agreement, 1) }}</td>
                 <td class="num">{{ x.flips.length }}</td>

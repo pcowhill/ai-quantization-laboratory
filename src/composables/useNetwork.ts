@@ -1,6 +1,6 @@
 import { computed, shallowRef, watch } from 'vue';
 import type { GridResult } from '@/workers/tasks';
-import type { NetworkEvaluation } from '@/labs/network';
+import { EVAL_SAMPLE_LIMIT, type NetworkEvaluation } from '@/labs/network';
 import { networkPreset } from '@/data/networks';
 import { plainClone } from '@/state/clone';
 import type { NetworkState } from '@/state/schema';
@@ -18,7 +18,7 @@ export function useNetworkEvaluation(state: () => NetworkState) {
   const key = computed(() => JSON.stringify(state()));
   const gridKey = computed(() => {
     const s = state();
-    return JSON.stringify({ n: s.network, v: s.variants.filter((v) => v.enabled), samples: s.samples.length, show: s.showBoundary, preset: s.presetId });
+    return JSON.stringify({ n: s.network, v: s.variants.filter((v) => v.enabled), samples: s.samples, show: s.showBoundary, preset: s.presetId });
   });
 
   async function run() {
@@ -66,7 +66,7 @@ export function useNetworkEvaluation(state: () => NetworkState) {
     }
     try {
       const r = (await runCompute(
-        { kind: 'network-grid', net: plainClone(s.network), variants: plainClone(s.variants.filter((v) => v.enabled)), samples: plainClone(s.samples), range, G: 64 },
+        { kind: 'network-grid', net: plainClone(s.network), variants: plainClone(s.variants.filter((v) => v.enabled)), samples: plainClone(s.samples.slice(0, EVAL_SAMPLE_LIMIT)), range, G: 64 },
         1e9,
       )) as GridResult[];
       if (my === gridToken) grids.value = r;
