@@ -1,0 +1,10 @@
+// Vitest Snapshot v1, https://vitest.dev/guide/snapshot.html
+
+exports[`seeded generators > golden values pin the generator output across releases 1`] = `
+[
+  "0.31875784963858494",
+  "-0.77061601674194080",
+  "0.15178267621950975",
+  "-0.12624145471928355",
+]
+`;
