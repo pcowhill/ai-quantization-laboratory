@@ -262,6 +262,10 @@ textarea.input {
 .table th.num {
   text-align: right;
 }
+/* Numbers with units (e.g. "42.19 dB") must not break across lines. */
+.table td.num {
+  white-space: nowrap;
+}
 .table tbody tr:hover {
   background: var(--accent-softer);
 }

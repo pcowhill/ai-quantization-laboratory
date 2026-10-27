@@ -17,6 +17,17 @@ Everything runs in your browser. There is no server-side component, no account a
 
 There are also eleven **guided lessons** that set up the real laboratories, and **experiments** you can save, snapshot, branch, compare, export and import (see [docs/EXPERIMENT_FORMAT.md](docs/EXPERIMENT_FORMAT.md)).
 
+### Screenshots
+
+| | |
+|---|---|
+| ![Number Inspector: FP16 encoding of 0.1, bit fields, error and neighbouring values](docs/screenshots/inspector-light.png) | ![Quantization Workbench: three variants compared, storage and charts](docs/screenshots/workbench-light.png) |
+| ![Matrix Laboratory: storage vs arithmetic error split and dot-product trace](docs/screenshots/matrix-light.png) | ![Neural Network Laboratory: predictions, decision regions and network diagram](docs/screenshots/network-light.png) |
+| ![Guided lesson: FP16 accumulator stagnation in a 4096-term dot product](docs/screenshots/lesson-light.png) | ![Experiments: comparing the current state with a snapshot](docs/screenshots/experiments-compare-light.png) |
+| ![Dark theme: Quantization Workbench](docs/screenshots/workbench-dark.png) | ![Dark theme: Neural Network Laboratory](docs/screenshots/network-dark.png) |
+
+Phone width (390 px): ![Number Inspector on a phone](docs/screenshots/phone-inspector-light.png) ![Neural Network Laboratory on a phone, dark theme](docs/screenshots/phone-network-dark.png)
+
 ### How faithful is it?
 
 - Number formats are simulated **exactly** on top of binary64: conversions, rounding modes and overflow rules follow the cited specifications (IEEE 754-2019, OCP OFP8 and MX v1.0). They are verified against independent references (ml_dtypes, NumPy, C `fesetround`, exact rationals); see [docs/NUMERICS.md](docs/NUMERICS.md).
