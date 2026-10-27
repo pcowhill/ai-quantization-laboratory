@@ -31,11 +31,11 @@ export const MATRIX_PRESETS: MatrixPreset[] = [
   {
     id: 'stagnation',
     name: 'Long dot product: FP16 accumulator stagnation',
-    description: '512 products of 1·1 (plus small noise). In an FP16 accumulator the running sum stops growing once the spacing exceeds the addend — try pairwise or blocked order, or an FP32 accumulator.',
+    description: '4096 products between 0.8 and 0.99. Above 2048 the FP16 spacing is 2, so adding any value below 1 rounds straight back down: the running sum stops growing at 2048 — try pairwise or blocked order, or an FP32 accumulator. (Addends straddling 1 would instead round up and down at random, an unbiased random walk.)',
     apply: () => ({
       op: 'dot',
-      A: { rows: 1, cols: 512, values: g(1, 512, 3, 'uniform', { low: 0.9, high: 1.1 }) },
-      B: { rows: 512, cols: 1, values: new Array(512).fill(1) },
+      A: { rows: 1, cols: 4096, values: g(1, 4096, 3, 'uniform', { low: 0.8, high: 0.99 }) },
+      B: { rows: 4096, cols: 1, values: new Array(4096).fill(1) },
       quantA: null,
       quantB: null,
       arith: { ...DEFAULT_ARITH_CONFIG, productFormat: 'fp16', accumulatorFormat: 'fp16', outputFormat: 'fp32', order: 'sequential' },

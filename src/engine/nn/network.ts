@@ -272,10 +272,11 @@ function layerForward(prepared: PreparedNetwork, i: number, x: Float64Array): La
   let flags = 0;
   for (let j = 0; j < l.units; j++) {
     const row = W.subarray(j * fanIn, (j + 1) * fanIn);
-    const r = machine.dot(row, used, false, l.bias[j]!);
-    preact[j] = r.value;
-    flags |= r.flags;
-    output[j] = applyActivation(l.activation, r.value);
+    machine.flags = 0;
+    const v = machine.dotValue(row, used, l.bias[j]!);
+    preact[j] = v;
+    flags |= machine.flags;
+    output[j] = applyActivation(l.activation, v);
   }
   return { input: x, inputUsed: used, preact, output, activationParams: params, arithFlags: flags };
 }

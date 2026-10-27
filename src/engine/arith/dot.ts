@@ -194,6 +194,35 @@ export class ArithMachine {
     return this.add(this.pairwise(terms, lo, mid), this.pairwise(terms, mid, hi));
   }
 
+  /** True when every operation is native binary64 round-to-nearest (plain JavaScript arithmetic is exact-equivalent). */
+  get isNativeFp64(): boolean {
+    const c = this.cfg;
+    return (
+      c.productFormat === 'fp64' && c.accumulatorFormat === 'fp64' && c.outputFormat === 'fp64' && c.rounding === 'nearest-even' &&
+      c.order === 'sequential' && c.overflow === 'nonsaturate' && !c.ftz
+    );
+  }
+
+  /**
+   * Dot product value only (no exact reference, no trace). For native FP64
+   * configurations this is a plain loop, which produces bit-identical results
+   * to the general path (fl(a·b) and fl(s + p) are exactly RNE-rounded
+   * binary64 operations); flags are not tracked on that path.
+   */
+  dotValue(a: ArrayLike<number>, b: ArrayLike<number>, bias?: number): number {
+    if (a.length !== b.length) throw new RangeError('Dot product operands must have equal length');
+    if (this.isNativeFp64) {
+      let s = 0;
+      for (let i = 0; i < a.length; i++) s += a[i]! * b[i]!;
+      return bias === undefined ? s : s + bias;
+    }
+    const products = new Float64Array(a.length);
+    for (let i = 0; i < a.length; i++) products[i] = this.mul(a[i]!, b[i]!);
+    let value = this.sum(products);
+    if (bias !== undefined) value = this.add(value, bias);
+    return this.round(this.cfg.outputFormat, value);
+  }
+
   /** Dot product with the configured product/accumulator/output precision. */
   dot(a: ArrayLike<number>, b: ArrayLike<number>, withSteps = false, bias?: number): DotResult {
     if (a.length !== b.length) throw new RangeError('Dot product operands must have equal length');

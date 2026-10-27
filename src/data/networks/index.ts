@@ -93,9 +93,9 @@ function deepChainPreset(): NetworkPreset {
   const rng = new Rng(77);
   const normal = new NormalSampler(rng.fork(1));
   const net = initNetwork(4, [8, 8, 8, 8, 8, 8, 2], ['tanh', 'tanh', 'tanh', 'tanh', 'tanh', 'tanh', 'identity'], 'identity', rng, normal);
-  // Gain 1.6 on tanh layers puts the chain in a sensitivity-amplifying regime.
+  // Gain 4 on tanh layers puts the chain in the chaotic, sensitivity-amplifying regime.
   net.layers.forEach((l, i) => {
-    if (i < 6) l.weights = l.weights.map((w) => w * 1.6);
+    if (i < 6) l.weights = l.weights.map((w) => w * 4);
   });
   net.inputNames = ['u₁', 'u₂', 'u₃', 'u₄'];
   net.outputNames = ['y₁', 'y₂'];
@@ -104,11 +104,11 @@ function deepChainPreset(): NetworkPreset {
   return {
     id: 'deep-chain',
     name: 'Deep tanh chain (4-8×6-2, regression)',
-    description: 'Seven narrow layers with gain 1.6 (no training). Small perturbations grow from layer to layer, which makes error propagation visible.',
+    description: 'Seven narrow tanh layers with weight gain 4 (no training) — a chaotic regime where small perturbations grow from layer to layer, which makes error propagation visible.',
     network: net,
     samples,
     labels: null,
-    provenance: 'Deterministic initialisation (xoshiro128** seed 77, N(0, (1.6/√fan-in)²) weights); inputs uniform in [−1, 1] (seed 78).',
+    provenance: 'Deterministic initialisation (xoshiro128** seed 77, N(0, (4/√fan-in)²) weights in hidden layers); inputs uniform in [−1, 1] (seed 78).',
   };
 }
 

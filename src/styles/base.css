@@ -449,3 +449,8 @@ textarea.input {
     background: none;
   }
 }
+@media (max-width: 1100px) {
+  .with-lesson .lab-main {
+    padding-bottom: 46vh;
+  }
+}

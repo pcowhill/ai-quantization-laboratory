@@ -187,3 +187,22 @@ describe('regressions from independent review', () => {
     expect(r.maxAbsPartial).toBe(127 * 127 * 140000);
   });
 });
+
+describe('dotValue fast path', () => {
+  it('native FP64 fast path is bit-identical to the general path (incl. bias and overflow)', () => {
+    const a = Array.from(generate({ kind: 'student-t', params: { dof: 1 }, rows: 1, cols: 300, seed: 3 }));
+    const b = Array.from(generate({ kind: 'lognormal', params: { sigma: 4 }, rows: 1, cols: 300, seed: 4 }));
+    const m = new ArithMachine(FP64_ARITH);
+    expect(m.isNativeFp64).toBe(true);
+    for (const bias of [undefined, 0.1, -1e300]) expect(Object.is(m.dotValue(a, b, bias), m.dot(a, b, false, bias).value)).toBe(true);
+    expect(m.dotValue([1e308, 1e308], [10, 10])).toBe(Infinity);
+  });
+  it('general dotValue equals dot().value for reduced precision', () => {
+    const a = Array.from(generate({ kind: 'normal', params: {}, rows: 1, cols: 64, seed: 5 }));
+    const b = Array.from(generate({ kind: 'normal', params: {}, rows: 1, cols: 64, seed: 6 }));
+    for (const order of ['sequential', 'pairwise', 'blocked', 'kahan'] as const) {
+      const cfg = makeArithConfig({ productFormat: 'bf16', accumulatorFormat: 'fp16', outputFormat: 'bf16', order, blockSize: 8 });
+      expect(new ArithMachine(cfg).dotValue(a, b, 0.5)).toBe(new ArithMachine(cfg).dot(a, b, false, 0.5).value);
+    }
+  });
+});

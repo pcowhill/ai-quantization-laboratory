@@ -60,7 +60,7 @@ export function useWorkbenchEvaluation(state: () => WorkbenchState) {
       if (my !== token) return;
       // Publish data and results in the same tick.
       data.value = d;
-      evaluations.value = result;
+      evaluations.value = result as VariantEvaluation[];
       computeError.value = null;
     } catch (e) {
       if (my !== token) return;
