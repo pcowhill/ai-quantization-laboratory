@@ -207,7 +207,7 @@ const dataSource: V<DataSource> = (x, path, errs) => {
         kind: str(['generator']) as V<'generator'>,
         distribution: str(DISTRIBUTIONS.map((d) => d.kind)) as V<import('@/engine/random/distributions').DistributionKind>,
         params: record,
-        rows: num({ int: true, min: 1, max: 4096 }),
+        rows: num({ int: true, min: 1, max: MAX_DATA_ELEMENTS }),
         cols: num({ int: true, min: 1, max: 1 << 20 }),
         seed: num({ int: true, min: 0, max: 4294967295 }),
       })(x, path, errs);
@@ -221,7 +221,7 @@ const dataSource: V<DataSource> = (x, path, errs) => {
       const d = obj({
         kind: str(['manual', 'imported']) as V<'manual'>,
         name: (v: unknown, p: string, e: Errors) => (x.kind === 'imported' ? str(undefined, 200)(v, p, e) : ''),
-        rows: num({ int: true, min: 1, max: 4096 }),
+        rows: num({ int: true, min: 1, max: MAX_DATA_ELEMENTS }),
         cols: num({ int: true, min: 1, max: 1 << 20 }),
         values: arr(anyNum, { min: 1, max: MAX_DATA_ELEMENTS }),
       })(x, path, errs);

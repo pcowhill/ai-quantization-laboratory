@@ -2,7 +2,7 @@
  * Preset inputs for the Number Inspector. Many depend on the selected format
  * (its max, min normal, rounding boundaries), so presets are functions.
  */
-import { exactDecimal } from '@/engine/float/rational';
+import { exactDecimal, parseExact } from '@/engine/float/rational';
 import { characteristics, getFormat } from '@/engine/formats/registry';
 import type { FormatId } from '@/engine/formats/types';
 import { pow2 } from '@/engine/float/double';
@@ -62,7 +62,7 @@ export const INSPECTOR_PRESETS: InspectorPreset[] = [
     label: 'Half min subnormal',
     group: 'Format limits',
     description: 'Exactly halfway between 0 and the smallest subnormal: ties-to-even rounds to 0 (underflow), round-up gives the min subnormal.',
-    value: (f) => floatOnly(f, (c) => exactDecimal(c.minSubnormal / 2)),
+    value: (f) => floatOnly(f, (c, m) => describeInput(parseExact(`0x1p${c.emin - m - 1}`))),
   },
   {
     id: 'overflow-tie',
@@ -83,21 +83,21 @@ export const INSPECTOR_PRESETS: InspectorPreset[] = [
     label: '1 + ½ε (tie)',
     group: 'Rounding boundaries',
     description: 'Exactly halfway between 1 and the next value. Ties-to-even keeps 1 (even last bit); ties-away gives 1 + ε.',
-    value: (f) => floatOnly(f, (c) => exactDecimal(1 + c.epsilon / 2)),
+    value: (f) => floatOnly(f, (_c, m) => exactSumDecimal(1, pow2(-m - 1))),
   },
   {
     id: 'tie-one-up',
     label: '1 + ½ε + tiny',
     group: 'Rounding boundaries',
     description: 'Just above the tie: round-to-nearest now goes up.',
-    value: (f) => floatOnly(f, (c) => `${exactDecimal(1 + c.epsilon / 2)}000000000000000000001`),
+    value: (f) => floatOnly(f, (_c, m) => `${exactSumDecimal(1, pow2(-m - 1))}000000000000000000001`),
   },
   {
     id: 'tie-odd',
     label: '1 + 1½ε (tie)',
     group: 'Rounding boundaries',
     description: 'Halfway between 1+ε (odd last bit) and 1+2ε (even): ties-to-even now rounds up.',
-    value: (f) => floatOnly(f, (c) => exactDecimal(1 + 1.5 * c.epsilon)),
+    value: (f) => floatOnly(f, (_c, m) => exactSumDecimal(1, pow2(-m), pow2(-m - 1))),
   },
   { id: 'int-half', label: '2.5 (integer tie)', group: 'Rounding boundaries', description: 'For integer formats: ties-to-even gives 2, ties-away gives 3.', value: () => '2.5' },
 ];

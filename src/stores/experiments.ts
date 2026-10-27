@@ -21,6 +21,12 @@ export function newId(prefix = 'e'): string {
   return `${prefix}-${Date.now().toString(36)}-${rnd}`;
 }
 
+/** Experiment and snapshot names are limited to 200 characters (schema limit). */
+export function clampName(name: string): string {
+  const t = name.trim();
+  return t.length <= 200 ? t : `${t.slice(0, 199)}…`;
+}
+
 function now(): string {
   return new Date().toISOString();
 }
@@ -40,7 +46,6 @@ export const useExperimentsStore = defineStore('experiments', () => {
   const past = ref<string[]>([]);
   const future = ref<string[]>([]);
   let lastSerialized = '';
-  let applyingHistory = false;
   let historyTimer: ReturnType<typeof setTimeout> | null = null;
   let saveTimer: ReturnType<typeof setTimeout> | null = null;
 
@@ -79,10 +84,8 @@ export const useExperimentsStore = defineStore('experiments', () => {
   function restoreSerialized(s: string) {
     const { state, errors } = parseStateText(s);
     if (errors.length) throw new Error(errors.join('; '));
-    applyingHistory = true;
     lab.replace(state);
     lastSerialized = s;
-    queueMicrotask(() => (applyingHistory = false));
     scheduleSave();
   }
 
@@ -95,6 +98,8 @@ export const useExperimentsStore = defineStore('experiments', () => {
   }
 
   function redo() {
+    // A pending (not yet recorded) edit supersedes the redo stack.
+    flushHistory();
     const next = future.value.pop();
     if (next === undefined) return;
     past.value.push(lastSerialized);
@@ -104,7 +109,9 @@ export const useExperimentsStore = defineStore('experiments', () => {
   watch(
     () => lab.state,
     () => {
-      if (applyingHistory || !ready.value) return;
+      // No guard for undo/redo restores is needed: recordHistory() ignores a
+      // state identical to the last recorded one, so only real edits are recorded.
+      if (!ready.value) return;
       if (historyTimer) clearTimeout(historyTimer);
       historyTimer = setTimeout(() => {
         historyTimer = null;
@@ -143,7 +150,7 @@ export const useExperimentsStore = defineStore('experiments', () => {
 
   function makeExperiment(name: string, state: ExperimentState, parentId: string | null = null): Experiment {
     const t = now();
-    return { id: newId(), name, createdAt: t, updatedAt: t, parentId, notes: '', state: plainClone(state), snapshots: [] };
+    return { id: newId(), name: clampName(name), createdAt: t, updatedAt: t, parentId, notes: '', state: plainClone(state), snapshots: [] };
   }
 
   async function init() {
@@ -173,21 +180,26 @@ export const useExperimentsStore = defineStore('experiments', () => {
     ready.value = true;
   }
 
+  /** Experiment management is unavailable while a lesson is running (its state is temporary). */
+  function assertNotInLesson() {
+    if (suspended.value) throw new Error('Exit the guided lesson first: its laboratory state is temporary.');
+  }
+
   async function switchTo(id: string) {
     if (id === currentId.value) return;
+    assertNotInLesson();
     flushHistory();
     await saveCurrent();
     const e = experiments.value.find((x) => x.id === id);
     if (!e) return;
     currentId.value = id;
-    applyingHistory = true;
     lab.replace(e.state);
-    queueMicrotask(() => (applyingHistory = false));
     resetHistory();
     await storage.value?.setMeta('currentId', id);
   }
 
   async function createExperiment(name = 'Untitled experiment', state?: ExperimentState, parentId: string | null = null) {
+    assertNotInLesson();
     await saveCurrent();
     const e = makeExperiment(name, state ?? defaultExperimentState(), parentId);
     experiments.value.unshift(e);
@@ -200,7 +212,7 @@ export const useExperimentsStore = defineStore('experiments', () => {
     await saveCurrent();
     const src = experiments.value.find((e) => e.id === id);
     if (!src) return null;
-    const e = makeExperiment(`${src.name} (copy)`, src.state, src.parentId);
+    const e = makeExperiment(`${src.name} (copy)`, src.state, src.id);
     e.notes = src.notes;
     e.snapshots = plainClone(src.snapshots).map((s) => ({ ...s, id: newId('s') }));
     experiments.value.unshift(e);
@@ -257,9 +269,10 @@ export const useExperimentsStore = defineStore('experiments', () => {
   }
 
   async function takeSnapshot(name: string) {
+    assertNotInLesson();
     const e = current.value;
     if (!e) return null;
-    const snap = { id: newId('s'), name: name.trim() || `Snapshot ${e.snapshots.length + 1}`, createdAt: now(), state: lab.snapshot() };
+    const snap = { id: newId('s'), name: clampName(name.trim() || `Snapshot ${e.snapshots.length + 1}`), createdAt: now(), state: lab.snapshot() };
     e.snapshots.push(snap);
     await saveCurrent();
     return snap;
@@ -287,11 +300,13 @@ export const useExperimentsStore = defineStore('experiments', () => {
   }
 
   function exportJson(ids: string[]): string {
+    assertNotInLesson();
     const list = experiments.value.filter((e) => ids.includes(e.id)).map((e) => (e.id === currentId.value ? { ...e, state: lab.snapshot() } : e));
     return encodeJson(makeExperimentFile(plainClone(list)), 2);
   }
 
   async function importJson(text: string): Promise<{ imported: Experiment[]; errors: string[] }> {
+    assertNotInLesson();
     const { experiments: parsed, errors } = parseExperimentFile(text);
     if (errors.length) return { imported: [], errors };
     const existing = new Set(experiments.value.map((e) => e.id));
@@ -300,8 +315,9 @@ export const useExperimentsStore = defineStore('experiments', () => {
       const e = plainClone(p);
       if (existing.has(e.id)) {
         e.id = newId();
-        e.name = `${e.name} (imported)`;
+        e.name = clampName(`${e.name} (imported)`);
       }
+      existing.add(e.id);
       experiments.value.unshift(e);
       imported.push(e);
       await persist(e);

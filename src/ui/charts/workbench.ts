@@ -72,13 +72,17 @@ export function distributionChart(p: ChartPalette, original: Float64Array, serie
 }
 
 /** Original (x) vs reconstructed (y) scatter: the quantization staircase. */
-export function transferChart(p: ChartPalette, s: SeriesInput, selected: number | null, outliers: Uint8Array | null, maxPoints = 6000): ChartData & { stride: number } {
+export function transferChart(p: ChartPalette, s: SeriesInput, selected: number | null, outliers: Uint8Array | null, maxPoints = 6000, maxForced = 20000): ChartData & { stride: number; forcedShown: number; forcedTotal: number } {
   const r = s.result;
   const n = r.original.length;
-  const always: number[] = [];
+  const forced: number[] = [];
+  for (let i = 0; i < n; i++) if (r.flags[i]! & SAT || (outliers && outliers[i])) forced.push(i);
+  // Saturated/outlier elements are always shown, unless there are more than
+  // maxForced of them, in which case an evenly spaced subset is shown (and reported).
+  const forcedStride = Math.max(1, Math.ceil(forced.length / maxForced));
+  const always = forced.filter((_, k) => k % forcedStride === 0);
   if (selected !== null) always.push(selected);
-  for (let i = 0; i < n; i++) if (r.flags[i]! & SAT || (outliers && outliers[i])) always.push(i);
-  const { indices, stride } = sampleIndices(n, maxPoints, always.slice(0, 4000));
+  const { indices, stride } = sampleIndices(n, maxPoints, always);
   const normal: [number, number, number][] = [];
   const sat: [number, number, number][] = [];
   const outl: [number, number, number][] = [];
@@ -128,7 +132,7 @@ export function transferChart(p: ChartPalette, s: SeriesInput, selected: number 
   };
   const columns = ['Element', 'Original', 'Reconstructed', 'Error', 'Saturated'];
   const rows = indices.slice(0, 400).map((i) => [i, r.original[i]!, r.recon[i]!, fmt(r.recon[i]! - r.original[i]!, 6), r.flags[i]! & SAT ? 'yes' : '']);
-  return { option, columns, rows, stride };
+  return { option, columns, rows, stride, forcedShown: forced.length === 0 ? 0 : Math.ceil(forced.length / forcedStride), forcedTotal: forced.length };
 }
 
 /** Distribution of signed errors x̂ − x for every variant. */
@@ -155,10 +159,10 @@ export function errorHistogramChart(p: ChartPalette, series: SeriesInput[], bins
 
 /** Empirical CDF of |x̂ − x| per variant. */
 export function errorCdfChart(p: ChartPalette, series: SeriesInput[], logX: boolean): ChartData {
-  const cdfs = series.map((s) => {
-    const abs = s.result.recon.map((y, i) => Math.abs(y - s.result.original[i]!));
-    return empiricalCdf(logX ? abs.filter((v) => v > 0) : abs, 300);
-  });
+  // The CDF is always computed over every finite error (zeros included); on a
+  // log axis only the plotted points with |error| > 0 are dropped.
+  const full = series.map((s) => empiricalCdf(s.result.recon.map((y, i) => Math.abs(y - s.result.original[i]!)), 300));
+  const cdfs = full.map((c) => (logX ? c.filter((pt) => pt[0] > 0) : c));
   const axis = axisStyle(p);
   const option = {
     ...baseOption(p),
@@ -175,7 +179,7 @@ export function errorCdfChart(p: ChartPalette, series: SeriesInput[], logX: bool
   };
   const columns = ['Variant', '50% of errors ≤', '90% ≤', '99% ≤', 'max'];
   const q = (c: [number, number][], f: number) => c.find((x) => x[1] >= f)?.[0] ?? NaN;
-  const rows = series.map((s, i) => [s.name, fmt(q(cdfs[i]!, 0.5), 5), fmt(q(cdfs[i]!, 0.9), 5), fmt(q(cdfs[i]!, 0.99), 5), fmt(cdfs[i]!.at(-1)?.[0] ?? NaN, 5)]);
+  const rows = series.map((s, i) => [s.name, fmt(q(full[i]!, 0.5), 5), fmt(q(full[i]!, 0.9), 5), fmt(q(full[i]!, 0.99), 5), fmt(full[i]!.at(-1)?.[0] ?? NaN, 5)]);
   return { option, columns, rows };
 }
 
@@ -228,8 +232,13 @@ export function quantGridChart(p: ChartPalette, s: SeriesInput, block: number, b
   const view = gridLevels(r, block);
   const vals: number[] = [];
   for (let i = 0; i < r.original.length; i++) if (r.layout.blockOf[i] === block) vals.push(r.original[i]!);
-  const lo0 = Math.min(view.params.representableLow, ...vals.filter(Number.isFinite));
-  const hi0 = Math.max(view.params.representableHigh, ...vals.filter(Number.isFinite));
+  let lo0 = view.params.representableLow;
+  let hi0 = view.params.representableHigh;
+  for (const v of vals) {
+    if (!Number.isFinite(v)) continue;
+    if (v < lo0) lo0 = v;
+    if (v > hi0) hi0 = v;
+  }
   const pad = (hi0 - lo0) * 0.04 || 1;
   const lo = lo0 - pad;
   const hi = hi0 + pad;
@@ -281,14 +290,26 @@ export function quantGridChart(p: ChartPalette, s: SeriesInput, block: number, b
 export function heatmapChart(p: ChartPalette, values: ArrayLike<number>, rows: number, cols: number, kind: 'signed' | 'magnitude', label: string, selected: number | null, maxCells = 40000): ChartData {
   const stepR = Math.max(1, Math.ceil(rows / Math.sqrt(maxCells)));
   const stepC = Math.max(1, Math.ceil(cols / Math.sqrt(maxCells)));
+  // Each displayed tile shows the element with the largest |value| inside it,
+  // so peaks are never hidden by down-sampling.
   const data: [number, number, number, number][] = [];
   let maxAbs = 0;
-  for (let r = 0; r < rows; r += stepR)
-    for (let c = 0; c < cols; c += stepC) {
-      const i = r * cols + c;
-      const v = values[i]!;
+  for (let r0 = 0; r0 < rows; r0 += stepR)
+    for (let c0 = 0; c0 < cols; c0 += stepC) {
+      let best = r0 * cols + c0;
+      let bestAbs = -1;
+      for (let r = r0; r < Math.min(rows, r0 + stepR); r++)
+        for (let c = c0; c < Math.min(cols, c0 + stepC); c++) {
+          const v = values[r * cols + c]!;
+          const a = Number.isFinite(v) ? Math.abs(v) : -1;
+          if (a > bestAbs) {
+            bestAbs = a;
+            best = r * cols + c;
+          }
+        }
+      const v = values[best]!;
       if (Number.isFinite(v)) maxAbs = Math.max(maxAbs, Math.abs(v));
-      data.push([c / stepC, r / stepR, Number.isFinite(v) ? v : 0, i]);
+      data.push([c0 / stepC, r0 / stepR, Number.isFinite(v) ? v : 0, best]);
     }
   const axis = axisStyle(p);
   const seq = [p.divMid, p.series[0]!];

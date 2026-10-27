@@ -24,8 +24,9 @@ function add() {
 }
 function remove(id: string) {
   if (variants.value.length <= 1) return;
-  variants.value = variants.value.filter((v) => v.id !== id);
-  if (active.value === id) active.value = variants.value[0]!.id;
+  const next = variants.value.filter((v) => v.id !== id);
+  variants.value = next;
+  if (active.value === id) active.value = next[0]!.id;
 }
 function rename(v: QuantVariant, name: string) {
   const n = name.trim();

@@ -149,10 +149,10 @@ function intFields(fmt: IntFormat, bits: bigint, q: number): { fields: FieldInfo
   return { fields, formula: `${sign} + ${rest} = ${q} (two's complement)` };
 }
 
-function errors(input: ParsedNumber | null, value: number): { abs: number | null; rel: number | null; absFrac: Fraction | null } {
+function errors(input: ParsedNumber | null, value: number | Fraction): { abs: number | null; rel: number | null; absFrac: Fraction | null } {
   if (!input) return { abs: null, rel: null, absFrac: null };
   const x = toFraction(input);
-  const v = fractionFromNumber(value);
+  const v = typeof value === 'number' ? fractionFromNumber(value) : value;
   if (!x || !v) return { abs: null, rel: null, absFrac: null };
   const d = fractionAbs(fractionSub(v, x));
   const rel = fractionDiv(d, fractionAbs(x));
@@ -249,7 +249,10 @@ export function describeInt(fmt: IntFormat, bits: bigint, input: ParsedNumber | 
   const q = decodeInt(fmt, bits);
   const value = q * scale;
   const { fields, formula } = intFields(fmt, bits, q);
-  const { abs, rel } = errors(input, value);
+  // The represented value q·scale is formed exactly for the error computation.
+  const sf = fractionFromNumber(scale);
+  const exactValue = sf ? { num: sf.num * BigInt(q), den: sf.den } : null;
+  const { abs, rel } = exactValue ? errors(input, exactValue) : errors(input, value);
   return {
     formatId: fmt.id,
     formatName: fmt.name,
@@ -305,14 +308,15 @@ export function describeInput(p: ParsedNumber): string {
     d /= 5n;
     fives++;
   }
-  if (d === 1n && Math.max(twos, fives) <= 400) {
+  // Every binary64 value (incl. subnormals) has at most 1074 decimal places.
+  if (d === 1n && Math.max(twos, fives) <= 2200) {
     const k = Math.max(twos, fives);
     const scaled = (p.num * 10n ** BigInt(k)) / p.den;
     const s = scaled.toString().padStart(k + 1, '0');
     const out = `${s.slice(0, s.length - k)}.${s.slice(s.length - k)}`.replace(/\.?0+$/, '');
     return sign + out;
   }
-  return `${sign}${p.num}/${p.den} (non-terminating decimal)`;
+  return d === 1n ? `${sign}${p.num}/${p.den}` : `${sign}${p.num}/${p.den} (non-terminating decimal)`;
 }
 
 export function inspect(state: InspectorState): InspectorResult {

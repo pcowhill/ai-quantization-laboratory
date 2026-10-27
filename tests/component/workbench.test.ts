@@ -60,3 +60,17 @@ describe('DataSourcePanel', () => {
     expect(src).toEqual({ kind: 'manual', rows: 2, cols: 2, values: [1, 2, 3, 4] });
   });
 });
+
+import VariantList from '@/components/workbench/VariantList.vue';
+
+describe('VariantList (regression)', () => {
+  it('removing the active first variant selects a remaining one', async () => {
+    const variants = [
+      { id: 'v1', name: 'a', enabled: true, config: makeQuantConfig() },
+      { id: 'v2', name: 'b', enabled: true, config: makeQuantConfig() },
+    ];
+    const w = mount(VariantList, { props: { modelValue: variants, active: 'v1' } });
+    await w.get('button[aria-label="Remove a"]').trigger('click');
+    expect((w.emitted('update:active')!.at(-1) as string[])[0]).toBe('v2');
+  });
+});

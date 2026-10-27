@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, ref, watch } from 'vue';
+import { computed, nextTick, ref, watch } from 'vue';
 import { characteristics, getFormat, PRIMARY_FORMAT_IDS, VARIANT_FORMAT_IDS } from '@/engine/formats/registry';
 import type { FormatId } from '@/engine/formats/types';
 import { exactDecimal } from '@/engine/float/rational';
@@ -28,13 +28,17 @@ const fmtDef = computed(() => getFormat(s.value.format));
 const isFloat = computed(() => fmtDef.value.kind === 'float');
 const base = ref<'binary' | 'hex' | 'decimal'>('binary');
 
-// Text input: edits are committed after a short pause; typing clears any bit override.
+// Text input: edits typed by the user are committed after a short pause and
+// clear any bit override. Programmatic updates of the input (e.g. after a bit
+// is toggled) are mirrored into the field without clearing the override.
 const text = ref(s.value.input);
 let timer: ReturnType<typeof setTimeout> | null = null;
+let syncing = false;
 watch(text, (v) => {
+  if (syncing) return;
   if (timer) clearTimeout(timer);
   timer = setTimeout(() => {
-    if (v !== s.value.input || s.value.bitsOverride !== null) {
+    if (v !== s.value.input) {
       s.value.input = v;
       s.value.bitsOverride = null;
     }
@@ -43,7 +47,11 @@ watch(text, (v) => {
 watch(
   () => s.value.input,
   (v) => {
-    if (v !== text.value) text.value = v;
+    if (v === text.value) return;
+    if (timer) clearTimeout(timer);
+    syncing = true;
+    text.value = v;
+    void nextTick(() => (syncing = false));
   },
 );
 

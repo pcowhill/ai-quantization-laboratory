@@ -164,7 +164,7 @@ const storage = computed(() => activeEval.value?.storage ?? null);
         <ChartCard
           v-if="transfer"
           :title="`Original vs reconstructed — ${activeVariant.name}`"
-          :caption="`Each dot is one element; the staircase is the quantizer. Red diamonds were clipped/saturated. Click a dot to inspect it.${transfer.stride > 1 ? ` Showing every ${transfer.stride}th element plus all saturated/outlier/selected ones.` : ''}`"
+          :caption="`Each dot is one element; the staircase is the quantizer. Red diamonds were clipped/saturated. Click a dot to inspect it.${transfer.stride > 1 ? ` Showing every ${transfer.stride}th element plus ${transfer.forcedShown < transfer.forcedTotal ? `an evenly spaced ${transfer.forcedShown} of the ${transfer.forcedTotal}` : 'all'} saturated/outlier elements and the selection.` : ''}`"
           :columns="transfer.columns"
           :rows="transfer.rows"
           test-id="chart-transfer"

@@ -35,7 +35,12 @@ export function parseCell(raw: string): number | null {
   if (t === '') return null;
   const lower = t.toLowerCase();
   if (lower in SPECIAL) return SPECIAL[lower]!;
-  if (!/^[+-]?(\d+\.?\d*|\.\d+)([eE][+-]?\d+)?$/.test(t) && !/^[+-]?0[xX][0-9a-fA-F]+$/.test(t)) return null;
+  const hex = /^([+-]?)0[xX]([0-9a-fA-F]+)$/.exec(t);
+  if (hex) {
+    const v = Number(`0x${hex[2]}`);
+    return hex[1] === '-' ? -v : v;
+  }
+  if (!/^[+-]?(\d+\.?\d*|\.\d+)([eE][+-]?\d+)?$/.test(t)) return null;
   const v = Number(t);
   return Number.isNaN(v) ? null : v;
 }
@@ -59,9 +64,10 @@ export function parseDelimited(text: string): ParsedTable {
   const notes: string[] = [];
   const problems: string[] = [];
   let start = 0;
-  // A first row with no numeric cells is treated as a header.
+  // A first row whose cells all look like names (start with a letter, "_" or a
+  // quote, and are not numbers) is treated as a header.
   const firstCells = lines[0]!.split(delim);
-  if (firstCells.every((c) => parseCell(c) === null)) {
+  if (firstCells.every((c) => parseCell(c) === null && /^\s*["'A-Za-z_]/.test(c))) {
     start = 1;
     notes.push(`Skipped header row: ${firstCells.map((c) => c.trim()).join(', ')}`);
   }
@@ -72,6 +78,7 @@ export function parseDelimited(text: string): ParsedTable {
     cells.forEach((c, j) => {
       const v = parseCell(c);
       if (v === null) problems.push(`Line ${i + 1}, column ${j + 1}: "${c.trim()}" is not a number.`);
+      else if (!Number.isFinite(v) && !/(nan|inf)/i.test(c)) problems.push(`Line ${i + 1}, column ${j + 1}: "${c.trim()}" is outside the FP64 range (write inf explicitly for infinity).`);
       else row.push(v);
     });
     rows.push(row);

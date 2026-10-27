@@ -68,3 +68,19 @@ describe('Number Inspector', () => {
     expect(w.get('[data-testid="inspector-hex"]').text()).toBe('0x2E67');
   });
 });
+
+describe('Number Inspector bit editing (regression)', () => {
+  it('an edited NaN payload persists (the text field sync does not clear it)', async () => {
+    const pinia = createPinia();
+    setActivePinia(pinia);
+    const w = mount(NumberInspector, { global: { plugins: [pinia] } });
+    const lab = useLabStore();
+    lab.state.inspector.input = '1.25';
+    await flushPromises();
+    await w.get('[data-testid="bit-1"]').trigger('click'); // exponent MSB → 0x7D00 (NaN with payload)
+    await new Promise((r) => setTimeout(r, 400));
+    await flushPromises();
+    expect(lab.state.inspector.bitsOverride).toBe('7D00');
+    expect(w.get('[data-testid="inspector-hex"]').text()).toBe('0x7D00');
+  });
+});
