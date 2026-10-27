@@ -1,0 +1,193 @@
+/*
+ * Design tokens. Light-first scientific laboratory aesthetic: neutral grays,
+ * rich green accents. Dark values are separate steps, not an automatic flip.
+ * Chart series colours follow the validated categorical palette (fixed order).
+ */
+:root {
+  color-scheme: light;
+  --font-sans: system-ui, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+  --font-mono: ui-monospace, 'SF Mono', 'Cascadia Mono', 'Roboto Mono', Menlo, Consolas, monospace;
+
+  --bg: #f4f5f4;
+  --surface: #ffffff;
+  --surface-2: #f7f8f7;
+  --surface-3: #eef0ee;
+  --surface-sunken: #e9ecea;
+  --border: #dde1de;
+  --border-strong: #c3c9c5;
+  --text: #141a16;
+  --text-2: #47524b;
+  --text-3: #6b756e;
+  --text-on-accent: #ffffff;
+
+  --accent: #17703f;
+  --accent-hover: #115a31;
+  --accent-strong: #0d4a27;
+  --accent-soft: #e2f0e7;
+  --accent-softer: #f0f7f2;
+  --focus: #1f8a4f;
+
+  /* Bit-field identity colours (always paired with S/E/M labels). */
+  --bit-sign: #c2364a;
+  --bit-sign-bg: #fbe9ec;
+  --bit-exp: #1f63b8;
+  --bit-exp-bg: #e6f0fb;
+  --bit-frac: #17703f;
+  --bit-frac-bg: #e2f0e7;
+  --bit-int: #6250d6;
+  --bit-int-bg: #eeebfb;
+
+  /* Status (reserved; always shown with icon + label). */
+  --good: #0a7d0a;
+  --warning: #9a6700;
+  --warning-bg: #fff4d6;
+  --serious: #b4501f;
+  --critical: #c22f2f;
+  --critical-bg: #fde8e8;
+  --info-bg: #eaf2fb;
+
+  /* Chart chrome */
+  --chart-surface: #ffffff;
+  --chart-ink: #141a16;
+  --chart-ink-2: #52514e;
+  --chart-muted: #898781;
+  --chart-grid: #e8e7e1;
+  --chart-axis: #c3c2b7;
+  --chart-neutral: #8a918c;
+
+  /* Categorical series (validated order) */
+  --series-1: #2a78d6;
+  --series-2: #eb6834;
+  --series-3: #1baf7a;
+  --series-4: #eda100;
+  --series-5: #e87ba4;
+  --series-6: #008300;
+  --series-7: #6250d6;
+  --series-8: #e34948;
+
+  /* Diverging (blue ↔ red, gray midpoint) */
+  --div-neg: #2a78d6;
+  --div-mid: #f0efec;
+  --div-pos: #e34948;
+
+  --radius-sm: 4px;
+  --radius: 6px;
+  --radius-lg: 10px;
+  --shadow-1: 0 1px 2px rgba(20, 26, 22, 0.06), 0 1px 1px rgba(20, 26, 22, 0.04);
+  --shadow-2: 0 6px 24px rgba(20, 26, 22, 0.12), 0 2px 6px rgba(20, 26, 22, 0.06);
+  --header-h: 56px;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme='light']) {
+    color-scheme: dark;
+    --bg: #0e1210;
+    --surface: #161b18;
+    --surface-2: #1b211d;
+    --surface-3: #222a25;
+    --surface-sunken: #111512;
+    --border: #2b342e;
+    --border-strong: #3c4740;
+    --text: #e6ebe7;
+    --text-2: #b3bdb6;
+    --text-3: #8c978f;
+    --accent: #3cb371;
+    --accent-hover: #52c584;
+    --accent-strong: #7dd8a3;
+    --accent-soft: #1b3326;
+    --accent-softer: #16241c;
+    --focus: #52c584;
+    --text-on-accent: #07140c;
+    --bit-sign: #f07a8a;
+    --bit-sign-bg: #3a1d23;
+    --bit-exp: #7fb2f0;
+    --bit-exp-bg: #172a40;
+    --bit-frac: #6fd39a;
+    --bit-frac-bg: #183324;
+    --bit-int: #a79cf0;
+    --bit-int-bg: #262144;
+    --good: #2fbf4f;
+    --warning: #e8b13b;
+    --warning-bg: #3a2e12;
+    --serious: #ec835a;
+    --critical: #f07070;
+    --critical-bg: #3d1a1a;
+    --info-bg: #172a40;
+    --chart-surface: #161b18;
+    --chart-ink: #f0efec;
+    --chart-ink-2: #c3c2b7;
+    --chart-muted: #898781;
+    --chart-grid: #2c2c2a;
+    --chart-axis: #3d3d3a;
+    --chart-neutral: #9aa39d;
+    --series-1: #3987e5;
+    --series-2: #d95926;
+    --series-3: #199e70;
+    --series-4: #c98500;
+    --series-5: #d55181;
+    --series-6: #008300;
+    --series-7: #9085e9;
+    --series-8: #e66767;
+    --div-neg: #3987e5;
+    --div-mid: #383835;
+    --div-pos: #e66767;
+    --shadow-1: 0 1px 2px rgba(0, 0, 0, 0.4);
+    --shadow-2: 0 8px 28px rgba(0, 0, 0, 0.5);
+  }
+}
+
+:root[data-theme='dark'] {
+  color-scheme: dark;
+  --bg: #0e1210;
+  --surface: #161b18;
+  --surface-2: #1b211d;
+  --surface-3: #222a25;
+  --surface-sunken: #111512;
+  --border: #2b342e;
+  --border-strong: #3c4740;
+  --text: #e6ebe7;
+  --text-2: #b3bdb6;
+  --text-3: #8c978f;
+  --accent: #3cb371;
+  --accent-hover: #52c584;
+  --accent-strong: #7dd8a3;
+  --accent-soft: #1b3326;
+  --accent-softer: #16241c;
+  --focus: #52c584;
+  --text-on-accent: #07140c;
+  --bit-sign: #f07a8a;
+  --bit-sign-bg: #3a1d23;
+  --bit-exp: #7fb2f0;
+  --bit-exp-bg: #172a40;
+  --bit-frac: #6fd39a;
+  --bit-frac-bg: #183324;
+  --bit-int: #a79cf0;
+  --bit-int-bg: #262144;
+  --good: #2fbf4f;
+  --warning: #e8b13b;
+  --warning-bg: #3a2e12;
+  --serious: #ec835a;
+  --critical: #f07070;
+  --critical-bg: #3d1a1a;
+  --info-bg: #172a40;
+  --chart-surface: #161b18;
+  --chart-ink: #f0efec;
+  --chart-ink-2: #c3c2b7;
+  --chart-muted: #898781;
+  --chart-grid: #2c2c2a;
+  --chart-axis: #3d3d3a;
+  --chart-neutral: #9aa39d;
+  --series-1: #3987e5;
+  --series-2: #d95926;
+  --series-3: #199e70;
+  --series-4: #c98500;
+  --series-5: #d55181;
+  --series-6: #008300;
+  --series-7: #9085e9;
+  --series-8: #e66767;
+  --div-neg: #3987e5;
+  --div-mid: #383835;
+  --div-pos: #e66767;
+  --shadow-1: 0 1px 2px rgba(0, 0, 0, 0.4);
+  --shadow-2: 0 8px 28px rgba(0, 0, 0, 0.5);
+}

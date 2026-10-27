@@ -6,9 +6,9 @@
  * would risk double rounding) and as an independent cross-check of the fast
  * double-based path in `round.ts` in the test-suite.
  */
-import { characteristics } from '../formats/registry';
+import { characteristics, FLOAT_FORMATS } from '../formats/registry';
 import type { FloatFormat } from '../formats/types';
-import { Frac } from '../rounding';
+import { Frac, roundsUp, type RoundingMode, type UniformSource } from '../rounding';
 import { doubleToBits } from './double';
 import {
   finishRounding,
@@ -257,4 +257,62 @@ export function shortestDecimal(fmt: FloatFormat, x: number): string {
  */
 function normalizeDecimal(s: string): string {
   return Number(s).toString();
+}
+
+// ---------------------------------------------------------------- exact helpers
+
+const FP64_FMT = FLOAT_FORMATS.fp64;
+
+/** Signed fraction num/den (den > 0) of a finite parsed number. */
+export interface Fraction {
+  num: bigint;
+  den: bigint;
+}
+
+export function toFraction(p: ParsedNumber): Fraction | null {
+  if (p.kind !== 'finite') return null;
+  return { num: p.negative ? -p.num : p.num, den: p.den };
+}
+
+export function fractionSub(a: Fraction, b: Fraction): Fraction {
+  return { num: a.num * b.den - b.num * a.den, den: a.den * b.den };
+}
+
+export function fractionAbs(a: Fraction): Fraction {
+  return { num: a.num < 0n ? -a.num : a.num, den: a.den };
+}
+
+/** a / b, or null when b = 0. */
+export function fractionDiv(a: Fraction, b: Fraction): Fraction | null {
+  if (b.num === 0n) return null;
+  const neg = b.num < 0n;
+  return { num: neg ? -a.num * b.den : a.num * b.den, den: neg ? -b.num * a.den : b.num * a.den };
+}
+
+/** Rounds a fraction once to FP64 (nearest-even). */
+export function fractionToNumber(a: Fraction): number {
+  const negative = a.num < 0n;
+  return roundParsed(FP64_FMT, { kind: 'finite', negative, num: negative ? -a.num : a.num, den: a.den }, { mode: 'nearest-even', overflow: 'nonsaturate' });
+}
+
+export function fractionFromNumber(x: number): Fraction | null {
+  return toFraction(doubleToRational(x));
+}
+
+/**
+ * Rounds an exact rational to an integer with the given mode (used for
+ * integer quantization of typed values without an FP64 detour).
+ */
+export function roundFractionToInteger(a: Fraction, mode: RoundingMode, rng?: UniformSource): number {
+  const negative = a.num < 0n;
+  const mag = negative ? -a.num : a.num;
+  const n = mag / a.den;
+  const rem = mag % a.den;
+  const twice = 2n * rem;
+  const frac: Frac = rem === 0n ? Frac.Zero : twice < a.den ? Frac.BelowHalf : twice === a.den ? Frac.Half : Frac.AboveHalf;
+  const fracValue = Number((rem << 53n) / a.den) / 2 ** 53;
+  // n may exceed 2^53 for huge inputs; those always saturate later, so a capped value is fine.
+  const nNum = n > 2n ** 53n ? 2 ** 53 : Number(n);
+  const m = roundsUp(mode, nNum, frac, negative, fracValue, rng) ? nNum + 1 : nNum;
+  return negative ? (m === 0 ? 0 : -m) : m;
 }

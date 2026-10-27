@@ -327,6 +327,70 @@ def dots(rng: np.random.Generator) -> None:
     )
 
 
+def nn_reference() -> None:
+    """Independent NumPy forward passes of the shipped presets (FP64 and fake-quantized)."""
+    with open(os.path.join(ROOT, "src", "data", "networks", "trained.json")) as f:
+        presets = {p["id"]: p for p in json.load(f)["presets"]}
+
+    def fq_weights(w, bits, per_channel):
+        qmax = 2 ** (bits - 1) - 1
+        if per_channel:
+            amax = np.abs(w).max(axis=1, keepdims=True)
+        else:
+            amax = np.full((w.shape[0], 1), np.abs(w).max())
+        s = (amax / qmax).astype(np.float32).astype(np.float64)
+        s[amax == 0] = 1.0
+        return np.clip(np.rint(w / s), -qmax - 1, qmax) * s
+
+    def fq_act(a, bits):
+        qmax = 2 ** (bits - 1) - 1
+        amax = np.abs(a).max()
+        if amax == 0:
+            return a.copy()
+        s = np.float64(np.float32(amax / qmax))
+        return np.clip(np.rint(a / s), -qmax - 1, qmax) * s
+
+    def fwd(p, x, wbits=None, per_channel=True, abits=None):
+        h = np.asarray(x, dtype=np.float64)
+        logits = None
+        for layer in p["network"]["layers"]:
+            w = np.array(layer["weights"]).reshape(layer["units"], -1)
+            b = np.array(layer["bias"])
+            if wbits:
+                w = fq_weights(w, wbits, per_channel)
+            hin = fq_act(h, abits) if abits else h
+            z = w @ hin + b
+            a = layer["activation"]
+            h = np.maximum(z, 0) if a == "relu" else np.tanh(z) if a == "tanh" else z
+            logits = z
+        return logits
+
+    cases = []
+    for pid in ("moons", "circles", "digits"):
+        p = presets[pid]
+        for k in range(12):
+            x = p["samples"][k]
+            cases.append({
+                "preset": pid,
+                "sample": k,
+                "fp64": [h64(v) for v in fwd(p, x)],
+                "w8pc_a8": [h64(v) for v in fwd(p, x, 8, True, 8)],
+                "w4pt": [h64(v) for v in fwd(p, x, 4, False, None)],
+            })
+    write(
+        "nn-forward.json",
+        {
+            "provenance": provenance(
+                "NumPy forward passes (float64, BLAS summation order) of the shipped presets. w8pc_a8: INT8 symmetric "
+                "per-output-channel weights (FP32 scales) and INT8 symmetric per-tensor dynamic activation quantization of "
+                "every layer input (FP32 scale), np.rint ties-to-even. w4pt: INT4 symmetric per-tensor weights, FP64 "
+                "activations. Values are final-layer logits."
+            ),
+            "cases": cases,
+        },
+    )
+
+
 def main() -> int:
     rng = np.random.default_rng(20261027)
     decode_tables()
@@ -335,6 +399,7 @@ def main() -> int:
     prng()
     int_quant(rng)
     dots(rng)
+    nn_reference()
     return 0
 
 
