@@ -9,7 +9,7 @@ import Icon from '@/components/common/Icon.vue';
 
 const props = defineProps<{ name: string; maxDim?: number; fixedRows?: number; fixedCols?: number }>();
 const m = defineModel<MatrixOperand>({ required: true });
-const maxDim = computed(() => props.maxDim ?? 64);
+const maxDim = computed(() => props.maxDim ?? 4096);
 const gridMode = computed(() => m.value.rows * m.value.cols <= 48 && m.value.cols <= 8);
 
 function resize(rows: number, cols: number) {

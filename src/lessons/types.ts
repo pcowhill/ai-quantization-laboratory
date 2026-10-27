@@ -7,7 +7,13 @@ export interface LessonStep {
   /** Configures the real laboratories when the step is entered. */
   setup?: (s: ExperimentState) => void;
   /** Optional exploratory task; `check` observes the live state. */
-  task?: { prompt: string; check: (s: ExperimentState) => boolean; success: string };
+  task?: {
+    prompt: string;
+    check: (s: ExperimentState) => boolean;
+    success: string;
+    /** Applies one valid solution ("Show me"). */
+    solve: (s: ExperimentState) => void;
+  };
   /** Short hint shown on request. */
   hint?: string;
 }

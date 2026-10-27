@@ -94,3 +94,15 @@ export function baseOption(p: ChartPalette) {
     },
   };
 }
+
+/** Mixes two #rrggbb colours: t = 0 gives a, t = 1 gives b. */
+export function mixHex(a: string, b: string, t: number): string {
+  const parse = (h: string) => {
+    const m = /^#?([0-9a-f]{6})$/i.exec(h.trim());
+    const n = m ? parseInt(m[1]!, 16) : 0x888888;
+    return [(n >> 16) & 255, (n >> 8) & 255, n & 255];
+  };
+  const x = parse(a);
+  const y = parse(b);
+  return `#${x.map((v, i) => Math.round(v + (y[i]! - v) * t).toString(16).padStart(2, '0')).join('')}`;
+}

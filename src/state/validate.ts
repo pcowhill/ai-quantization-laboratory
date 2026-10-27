@@ -23,7 +23,8 @@ import {
 } from './schema';
 
 export const MAX_DATA_ELEMENTS = MAX_GENERATED_ELEMENTS;
-export const MAX_MATRIX_DIM = 64;
+export const MAX_MATRIX_DIM = 4096;
+export const MAX_MATRIX_ELEMENTS = 65536;
 export const MAX_SAMPLES = 2000;
 
 type Errors = string[];
@@ -239,8 +240,9 @@ const matrixOperand: V<{ rows: number; cols: number; values: number[] }> = (x, p
   const m = obj({
     rows: num({ int: true, min: 1, max: MAX_MATRIX_DIM }),
     cols: num({ int: true, min: 1, max: MAX_MATRIX_DIM }),
-    values: arr(anyNum, { max: MAX_MATRIX_DIM * MAX_MATRIX_DIM }),
+    values: arr(anyNum, { max: MAX_MATRIX_ELEMENTS }),
   })(x, path, errs);
+  if (m.rows * m.cols > MAX_MATRIX_ELEMENTS) errs.push(`${path}: at most ${MAX_MATRIX_ELEMENTS} elements`);
   if (m.values.length !== m.rows * m.cols) errs.push(`${path}.values: expected ${m.rows * m.cols} values, found ${m.values.length}`);
   return m;
 };

@@ -35,15 +35,25 @@ export const useLessonsStore = defineStore('lessons', () => {
   const step = computed(() => active.value?.steps[stepIndex.value] ?? null);
   const isLast = computed(() => !!active.value && stepIndex.value === active.value.steps.length - 1);
 
+  /**
+   * Moves to step i. Steps without a setup build on the previous steps' setups,
+   * so moving forward by one applies only that step's setup (keeping what the
+   * learner did), while any other move replays setups 0..i from the defaults.
+   */
   function applyStep(i: number) {
     const lesson = active.value;
     if (!lesson) return;
-    stepIndex.value = Math.max(0, Math.min(lesson.steps.length - 1, i));
-    const s = lesson.steps[stepIndex.value]!;
-    if (s.setup) {
-      exps.flushHistory();
-      s.setup(lab.state);
+    const from = stepIndex.value;
+    const to = Math.max(0, Math.min(lesson.steps.length - 1, i));
+    if (to === from) return;
+    exps.flushHistory();
+    if (to === from + 1) {
+      lesson.steps[to]!.setup?.(lab.state);
+    } else {
+      lab.replace(defaultExperimentState());
+      for (let k = 0; k <= to; k++) lesson.steps[k]!.setup?.(lab.state);
     }
+    stepIndex.value = to;
   }
 
   function start(id: string) {
@@ -57,6 +67,7 @@ export const useLessonsStore = defineStore('lessons', () => {
     exps.suspended = true;
     active.value = lesson;
     lab.replace(defaultExperimentState());
+    stepIndex.value = -1;
     applyStep(0);
     exps.resetHistory();
   }

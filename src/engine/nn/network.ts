@@ -17,6 +17,7 @@ import { geluTanh, sigmoid, silu, softmax, tanh } from '../detmath';
 import { computeLayout } from '../quant/layout';
 import { calibrateValues, quantizeTensor, quantizeValue, type BlockParams, type QuantResult } from '../quant/quantize';
 import { validateQuantConfig, type QuantConfig } from '../quant/types';
+import { Rng } from '../random/prng';
 
 export type Activation = 'identity' | 'relu' | 'leaky-relu' | 'sigmoid' | 'tanh' | 'gelu' | 'silu';
 export type OutputMode = 'softmax' | 'sigmoid' | 'identity';
@@ -250,9 +251,11 @@ function quantizeActivation(prepared: PreparedNetwork, i: number, x: Float64Arra
   if (fixed && cfg.scaling === 'scaled') {
     const layout = computeLayout([1, x.length], cfg.granularity, cfg.axis, cfg.groupSize);
     const used = new Float64Array(x.length);
+    // Same random stream as quantizeTensor: seeded per activation vector.
+    const rng = cfg.rounding === 'stochastic' ? new Rng(cfg.seed) : undefined;
     for (let k = 0; k < x.length; k++) {
       const p = fixed[layout.blockOf[k]!]!;
-      used[k] = quantizeValue(x[k]!, cfg, p.scale, p.zeroPoint).recon;
+      used[k] = quantizeValue(x[k]!, cfg, p.scale, p.zeroPoint, rng).recon;
     }
     return { used, params: fixed };
   }
@@ -272,10 +275,11 @@ function layerForward(prepared: PreparedNetwork, i: number, x: Float64Array): La
   let flags = 0;
   for (let j = 0; j < l.units; j++) {
     const row = W.subarray(j * fanIn, (j + 1) * fanIn);
-    const r = machine.dot(row, used, false, l.bias[j]!);
-    preact[j] = r.value;
-    flags |= r.flags;
-    output[j] = applyActivation(l.activation, r.value);
+    machine.flags = 0;
+    const v = machine.dotValue(row, used, l.bias[j]!);
+    preact[j] = v;
+    flags |= machine.flags;
+    output[j] = applyActivation(l.activation, v);
   }
   return { input: x, inputUsed: used, preact, output, activationParams: params, arithFlags: flags };
 }
