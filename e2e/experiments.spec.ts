@@ -6,7 +6,9 @@ test('snapshot, compare, export and re-import an experiment; it survives a reloa
   page.on('pageerror', (e) => errors.push(e.message));
   await page.goto('./');
   const input = page.getByTestId('inspector-input');
+  const exact = page.getByTestId('inspector-exact-input');
   await input.fill('0.1');
+  await expect(exact).toHaveText('0.1');
 
   // Rename and snapshot.
   await page.getByTestId('open-experiments').click();
@@ -20,6 +22,8 @@ test('snapshot, compare, export and re-import an experiment; it survives a reloa
 
   // Change the state, then compare current vs the snapshot.
   await input.fill('1e-8');
+  // The inspector commits typed text after a short debounce; wait until it has.
+  await expect(exact).toHaveText('0.00000001');
   await page.getByTestId('open-experiments').click();
   await panel.getByRole('radio', { name: 'Compare' }).click();
   await panel.getByTestId('compare-b').selectOption({ label: 'Point one study › decimal 0.1' });

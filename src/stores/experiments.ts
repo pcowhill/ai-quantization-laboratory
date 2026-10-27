@@ -250,6 +250,7 @@ export const useExperimentsStore = defineStore('experiments', () => {
   }
 
   async function rename(id: string, name: string) {
+    assertNotInLesson();
     const e = experiments.value.find((x) => x.id === id);
     const trimmed = name.trim();
     if (!e || !trimmed) return;
@@ -259,6 +260,7 @@ export const useExperimentsStore = defineStore('experiments', () => {
   }
 
   async function setNotes(id: string, notes: string) {
+    assertNotInLesson();
     const e = experiments.value.find((x) => x.id === id);
     if (!e) return;
     e.notes = notes.slice(0, 20000);
@@ -296,6 +298,7 @@ export const useExperimentsStore = defineStore('experiments', () => {
 
   /** Restores a snapshot into the current experiment (undoable). */
   function restoreSnapshot(snapshotId: string) {
+    assertNotInLesson();
     const snap = current.value?.snapshots.find((s) => s.id === snapshotId);
     if (!snap) return;
     flushHistory();
@@ -303,6 +306,7 @@ export const useExperimentsStore = defineStore('experiments', () => {
   }
 
   async function deleteSnapshot(snapshotId: string) {
+    assertNotInLesson();
     const e = current.value;
     if (!e) return;
     e.snapshots = e.snapshots.filter((s) => s.id !== snapshotId);
@@ -311,12 +315,14 @@ export const useExperimentsStore = defineStore('experiments', () => {
 
   /** Resets only the given laboratory of the current experiment (undoable). */
   function resetLab(labId: LabId) {
+    assertNotInLesson();
     flushHistory();
     lab.resetLab(labId);
   }
 
   /** Resets every laboratory of the current experiment (undoable); other experiments are untouched. */
   function resetAllLabs() {
+    assertNotInLesson();
     flushHistory();
     const keep = lab.state.lab;
     lab.replace({ ...defaultExperimentState(), lab: keep });

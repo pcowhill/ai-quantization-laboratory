@@ -61,7 +61,8 @@ export interface ResultSummary {
   inspector: string;
   workbench: { name: string; mse: number | null; snr: number | null; bits: number | null }[];
   workbenchData: string;
-  matrix: { maxError: number; rmse: number };
+  /** Errors over finite output pairs; non-finite outputs and invalid set-ups are reported separately. */
+  matrix: { maxError: number; rmse: number; finite: number; nonFinite: number; error: string | null };
   network: { name: string; agreement: number | null; accuracy: number | null }[];
   networkBaselineAccuracy: number | null;
 }
@@ -88,7 +89,13 @@ export function summarizeResults(s: ExperimentState): ResultSummary {
     inspector,
     workbench,
     workbenchData,
-    matrix: { maxError: m.metrics.maxAbs, rmse: m.metrics.rmse },
+    matrix: {
+      maxError: m.metrics.maxAbs,
+      rmse: m.metrics.rmse,
+      finite: m.metrics.count - m.metrics.nonFinitePairs,
+      nonFinite: m.metrics.nonFinitePairs,
+      error: m.issues.filter((i) => i.severity === 'error').map((i) => i.message).join(' ') || null,
+    },
     network: s.network.variants
       .filter((v) => v.enabled)
       .map((v) => {

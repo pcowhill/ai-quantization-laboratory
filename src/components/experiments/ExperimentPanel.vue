@@ -4,7 +4,7 @@
  * resets), the saved library (switch, duplicate, branch, delete, export,
  * import) and a side-by-side comparison of any two experiments or snapshots.
  */
-import { computed, ref, watch } from 'vue';
+import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue';
 import ConfirmButton from '@/components/common/ConfirmButton.vue';
 import Drawer from '@/components/common/Drawer.vue';
 import Icon from '@/components/common/Icon.vue';
@@ -28,6 +28,9 @@ const tabs: { value: Tab; label: string }[] = [
   { value: 'compare', label: 'Compare' },
 ];
 const locked = computed(() => exps.suspended);
+/** True while an asynchronous action runs; blocks double submission. */
+const busy = ref(false);
+const blocked = computed(() => locked.value || busy.value);
 
 function when(iso: string) {
   const d = new Date(iso);
@@ -39,11 +42,15 @@ function nameOf(id: string | null) {
 
 /** Runs a store action and reports failures as a toast instead of an unhandled rejection. */
 async function act(fn: () => unknown, success?: string) {
+  if (busy.value) return;
+  busy.value = true;
   try {
     await fn();
     if (success) ui.toast(success, 'success');
   } catch (e) {
     ui.toast((e as Error).message, 'error');
+  } finally {
+    busy.value = false;
   }
 }
 
@@ -52,23 +59,54 @@ const nameDraft = ref('');
 const notesDraft = ref('');
 const snapName = ref('');
 watch(
-  () => exps.current,
-  (e) => {
+  () => exps.currentId,
+  () => {
+    const e = exps.current;
     nameDraft.value = e?.name ?? '';
     notesDraft.value = e?.notes ?? '';
   },
   { immediate: true },
 );
-function commitName() {
+// Drafts are committed shortly after typing stops, on change/blur, when the panel
+// closes and when the page is hidden or closed, so nothing typed is lost.
+function commitName(final = true) {
   const e = exps.current;
-  if (!e) return;
-  if (!nameDraft.value.trim()) nameDraft.value = e.name;
-  else if (nameDraft.value.trim() !== e.name) void act(() => exps.rename(e.id, nameDraft.value));
+  if (!e || exps.suspended) return;
+  if (!nameDraft.value.trim()) {
+    if (final) nameDraft.value = e.name;
+  } else if (nameDraft.value.trim() !== e.name) void exps.rename(e.id, nameDraft.value);
 }
 function commitNotes() {
   const e = exps.current;
-  if (e && notesDraft.value !== e.notes) void act(() => exps.setNotes(e.id, notesDraft.value));
+  if (e && !exps.suspended && notesDraft.value !== e.notes) void exps.setNotes(e.id, notesDraft.value);
 }
+let draftTimer: ReturnType<typeof setTimeout> | null = null;
+function scheduleDrafts() {
+  if (draftTimer) clearTimeout(draftTimer);
+  draftTimer = setTimeout(() => {
+    draftTimer = null;
+    commitName(false);
+    commitNotes();
+  }, 500);
+}
+function flushDrafts() {
+  if (draftTimer) clearTimeout(draftTimer);
+  draftTimer = null;
+  commitName(false);
+  commitNotes();
+}
+function onHidden() {
+  if (document.visibilityState === 'hidden') flushDrafts();
+}
+onMounted(() => {
+  document.addEventListener('visibilitychange', onHidden);
+  window.addEventListener('pagehide', flushDrafts);
+});
+onBeforeUnmount(() => {
+  flushDrafts();
+  document.removeEventListener('visibilitychange', onHidden);
+  window.removeEventListener('pagehide', flushDrafts);
+});
 async function snapshot() {
   await act(async () => {
     const s = await exps.takeSnapshot(snapName.value);
@@ -182,12 +220,33 @@ function runCompare() {
   }, 20);
 }
 
+/** Pairs rows by name; repeated names are paired by occurrence (1st with 1st, 2nd with 2nd). */
 function byName<T extends { name: string }>(a: T[], b: T[]) {
-  const names = [...new Set([...a.map((x) => x.name), ...b.map((x) => x.name)])];
-  return names.map((name) => ({ name, a: a.find((x) => x.name === name) ?? null, b: b.find((x) => x.name === name) ?? null }));
+  const keyed = (list: T[]) => {
+    const seen = new Map<string, number>();
+    return list.map((x) => {
+      const n = (seen.get(x.name) ?? 0) + 1;
+      seen.set(x.name, n);
+      return { key: `${x.name}\u0000${n}`, label: n > 1 ? `${x.name} (${n})` : x.name, x };
+    });
+  };
+  const ka = keyed(a);
+  const kb = keyed(b);
+  const keys = [...new Set([...ka.map((k) => k.key), ...kb.map((k) => k.key)])];
+  return keys.map((key) => {
+    const ea = ka.find((k) => k.key === key);
+    const eb = kb.find((k) => k.key === key);
+    return { key, name: (ea ?? eb)!.label, a: ea?.x ?? null, b: eb?.x ?? null };
+  });
 }
 const wbRows = computed(() => (comparison.value ? byName(comparison.value.a.workbench, comparison.value.b.workbench) : []));
 const nnRows = computed(() => (comparison.value ? byName(comparison.value.a.network, comparison.value.b.network) : []));
+
+function matrixText(m: ResultSummary['matrix']) {
+  if (m.error) return m.error;
+  const base = m.finite > 0 ? `max |error| ${fmt(m.maxError, 4)} · RMSE ${fmt(m.rmse, 4)} over ${m.finite} finite outputs` : 'no finite outputs';
+  return m.nonFinite > 0 ? `${base}; ${plural(m.nonFinite, 'output')} non-finite (overflow or NaN)` : base;
+}
 
 function parentLabel(e: Experiment) {
   const p = nameOf(e.parentId);
@@ -201,7 +260,7 @@ function parentLabel(e: Experiment) {
       <Segmented v-model="tab" :options="tabs" label="Experiment panel section" />
 
       <div v-if="locked" class="callout callout-warning" role="status">
-        A guided lesson is running. Its laboratory state is temporary, so experiments cannot be changed until you exit the lesson (your experiment is restored then).
+        A guided lesson is running. Its laboratory state is temporary, so experiments cannot be changed or compared until you exit the lesson (your experiment is restored then).
       </div>
       <div v-if="!exps.persistent" class="callout callout-warning" role="status" data-testid="memory-only">
         This browser does not allow local storage for this page (for example in a private window), so experiments last only until the page is closed. Export them to keep them.
@@ -214,7 +273,7 @@ function parentLabel(e: Experiment) {
           <div class="card-body stack">
             <div class="field">
               <label for="exp-name">Name</label>
-              <input id="exp-name" v-model="nameDraft" class="input" maxlength="200" data-testid="exp-name" :disabled="locked" @change="commitName" @keydown.enter="commitName" />
+              <input id="exp-name" v-model="nameDraft" class="input" maxlength="200" data-testid="exp-name" :disabled="blocked" @input="scheduleDrafts" @change="commitName()" @keydown.enter="commitName()" />
             </div>
             <div class="muted small">
               Created {{ when(exps.current.createdAt) }} · last saved {{ when(exps.current.updatedAt) }}
@@ -222,12 +281,12 @@ function parentLabel(e: Experiment) {
             </div>
             <div class="field">
               <label for="exp-notes">Notes</label>
-              <textarea id="exp-notes" v-model="notesDraft" class="input notes" rows="4" maxlength="20000" placeholder="What are you testing? What did you observe?" :disabled="locked" @change="commitNotes" @blur="commitNotes" />
+              <textarea id="exp-notes" v-model="notesDraft" class="input notes" rows="4" maxlength="20000" placeholder="What are you testing? What did you observe?" :disabled="blocked" @input="scheduleDrafts" @change="commitNotes" @blur="commitNotes" />
             </div>
             <div class="row">
-              <button type="button" class="btn btn-sm" :disabled="locked" data-testid="exp-duplicate" @click="act(() => exps.duplicate(exps.currentId), 'Duplicated; now editing the copy')"><Icon name="copy" :size="13" /> Duplicate</button>
-              <button type="button" class="btn btn-sm" :disabled="locked" data-testid="exp-branch" @click="act(() => exps.branch(exps.currentId), 'Branched; now editing the branch')"><Icon name="branch" :size="13" /> Branch</button>
-              <button type="button" class="btn btn-sm" :disabled="locked" @click="download([exps.currentId], exps.current.name)"><Icon name="download" :size="13" /> Export JSON</button>
+              <button type="button" class="btn btn-sm" :disabled="blocked" data-testid="exp-duplicate" @click="act(() => exps.duplicate(exps.currentId), 'Duplicated; now editing the copy')"><Icon name="copy" :size="13" /> Duplicate</button>
+              <button type="button" class="btn btn-sm" :disabled="blocked" data-testid="exp-branch" @click="act(() => exps.branch(exps.currentId), 'Branched; now editing the branch')"><Icon name="branch" :size="13" /> Branch</button>
+              <button type="button" class="btn btn-sm" :disabled="blocked" @click="download([exps.currentId], exps.current.name)"><Icon name="download" :size="13" /> Export JSON</button>
             </div>
           </div>
         </section>
@@ -237,8 +296,8 @@ function parentLabel(e: Experiment) {
           <div class="card-body stack">
             <form class="row" @submit.prevent="snapshot">
               <label class="visually-hidden" for="snap-name">Snapshot name</label>
-              <input id="snap-name" v-model="snapName" class="input grow" maxlength="200" :placeholder="`Snapshot ${exps.current.snapshots.length + 1}`" :disabled="locked" />
-              <button type="submit" class="btn btn-primary btn-sm" :disabled="locked" data-testid="take-snapshot"><Icon name="camera" :size="13" /> Take snapshot</button>
+              <input id="snap-name" v-model="snapName" class="input grow" maxlength="200" :placeholder="`Snapshot ${exps.current.snapshots.length + 1}`" :disabled="blocked" />
+              <button type="submit" class="btn btn-primary btn-sm" :disabled="blocked" data-testid="take-snapshot"><Icon name="camera" :size="13" /> Take snapshot</button>
             </form>
             <p v-if="!exps.current.snapshots.length" class="muted small">No snapshots yet. Take one before trying something risky — you can restore it, branch from it or compare against it.</p>
             <ul v-else class="list" data-testid="snapshot-list">
@@ -247,11 +306,11 @@ function parentLabel(e: Experiment) {
                   <div class="item-title">{{ s.name }}</div>
                   <div class="muted small">{{ when(s.createdAt) }} · {{ LABS.find((l) => l.id === s.state.lab)?.name }}</div>
                 </div>
-                <ConfirmButton small :disabled="locked" label="Restore" confirm-label="Replace current state?" title="Replace the current laboratories with this snapshot (undoable)" :test-id="`restore-${s.id}`" @confirm="act(() => exps.restoreSnapshot(s.id), `Restored “${s.name}” (Ctrl+Z undoes)`)"
+                <ConfirmButton small :disabled="blocked" label="Restore" confirm-label="Replace current state?" title="Replace the current laboratories with this snapshot (undoable)" :test-id="`restore-${s.id}`" @confirm="act(() => exps.restoreSnapshot(s.id), `Restored “${s.name}” (Ctrl+Z undoes)`)"
                   ><Icon name="restore" :size="13"
                 /></ConfirmButton>
-                <button type="button" class="btn btn-sm" :disabled="locked" title="New experiment starting from this snapshot" @click="act(() => exps.branch(exps.currentId, s.id), 'Branched from snapshot')"><Icon name="branch" :size="13" /> Branch</button>
-                <ConfirmButton small :disabled="locked" label="Delete" confirm-label="Delete snapshot?" :test-id="`delete-snap-${s.id}`" @confirm="act(() => exps.deleteSnapshot(s.id))"><Icon name="trash" :size="13" /></ConfirmButton>
+                <button type="button" class="btn btn-sm" :disabled="blocked" title="New experiment starting from this snapshot" @click="act(() => exps.branch(exps.currentId, s.id), 'Branched from snapshot')"><Icon name="branch" :size="13" /> Branch</button>
+                <ConfirmButton small :disabled="blocked" label="Delete" confirm-label="Delete snapshot?" :test-id="`delete-snap-${s.id}`" @confirm="act(() => exps.deleteSnapshot(s.id))"><Icon name="trash" :size="13" /></ConfirmButton>
               </li>
             </ul>
           </div>
@@ -260,11 +319,11 @@ function parentLabel(e: Experiment) {
         <section class="card">
           <header class="card-header"><h3>Reset</h3><span class="muted small">Only this experiment; Ctrl+Z undoes a reset</span></header>
           <div class="card-body row">
-            <ConfirmButton v-for="l in LABS" :key="l.id" small :label="l.short" :confirm-label="`Reset ${l.short}?`" :title="`Reset the ${l.name} to its defaults`" :test-id="`reset-${l.id}`" @confirm="act(() => exps.resetLab(l.id), `${l.name} reset`)"
+            <ConfirmButton v-for="l in LABS" :key="l.id" small :disabled="blocked" :label="l.short" :confirm-label="`Reset ${l.short}?`" :title="`Reset the ${l.name} to its defaults`" :test-id="`reset-${l.id}`" @confirm="act(() => exps.resetLab(l.id), `${l.name} reset`)"
               ><Icon name="reset" :size="13"
             /></ConfirmButton>
             <span class="spacer" />
-            <ConfirmButton small label="All laboratories" confirm-label="Reset all four?" test-id="reset-all" @confirm="act(() => exps.resetAllLabs(), 'All laboratories reset')"><Icon name="reset" :size="13" /></ConfirmButton>
+            <ConfirmButton small :disabled="blocked" label="All laboratories" confirm-label="Reset all four?" test-id="reset-all" @confirm="act(() => exps.resetAllLabs(), 'All laboratories reset')"><Icon name="reset" :size="13" /></ConfirmButton>
           </div>
         </section>
       </template>
@@ -272,18 +331,23 @@ function parentLabel(e: Experiment) {
       <!-- ===================================================== library -->
       <template v-else-if="tab === 'library'">
         <div class="row">
-          <button type="button" class="btn btn-primary btn-sm" :disabled="locked" data-testid="exp-new" @click="act(() => exps.createExperiment(), 'New experiment created')"><Icon name="plus" :size="13" /> New experiment</button>
-          <button type="button" class="btn btn-sm" :disabled="locked" data-testid="exp-import" @click="fileInput?.click()"><Icon name="upload" :size="13" /> Import JSON…</button>
+          <button type="button" class="btn btn-primary btn-sm" :disabled="blocked" data-testid="exp-new" @click="act(() => exps.createExperiment(), 'New experiment created')"><Icon name="plus" :size="13" /> New experiment</button>
+          <button type="button" class="btn btn-sm" :disabled="blocked" data-testid="exp-import" @click="fileInput?.click()"><Icon name="upload" :size="13" /> Import JSON…</button>
           <input ref="fileInput" type="file" accept=".json,application/json" class="visually-hidden" tabindex="-1" aria-hidden="true" data-testid="exp-import-file" @change="onImportFile" />
           <span class="spacer" />
-          <button type="button" class="btn btn-sm" :disabled="locked || !selected.length" data-testid="exp-export-selected" @click="download(selected, selected.length === 1 ? (nameOf(selected[0]!) ?? 'experiment') : 'experiments')">
+          <button type="button" class="btn btn-sm" :disabled="blocked || !selected.length" data-testid="exp-export-selected" @click="download(selected, selected.length === 1 ? (nameOf(selected[0]!) ?? 'experiment') : 'experiments')">
             <Icon name="download" :size="13" /> Export selected ({{ selected.length }})
           </button>
         </div>
-        <ul v-if="importErrors.length" class="callout callout-critical errors" role="alert" data-testid="import-errors">
-          <li v-for="(e, i) in importErrors.slice(0, 12)" :key="i">{{ e }}</li>
-          <li v-if="importErrors.length > 12">… and {{ importErrors.length - 12 }} more problems</li>
-        </ul>
+        <div v-if="importErrors.length" class="callout callout-critical" role="alert" data-testid="import-errors">
+          <div>
+            The file was not imported:
+            <ul class="errors">
+              <li v-for="(e, i) in importErrors.slice(0, 12)" :key="i">{{ e }}</li>
+              <li v-if="importErrors.length > 12">… and {{ importErrors.length - 12 }} more problems</li>
+            </ul>
+          </div>
+        </div>
         <p class="muted small">Experiments are stored only in this browser. Nothing is uploaded; export a JSON file to back up or share one.</p>
         <div class="row small">
           <label class="check"><input type="checkbox" :checked="allSelected" @change="toggleAll" /> Select all</label>
@@ -302,10 +366,10 @@ function parentLabel(e: Experiment) {
               </div>
               <div v-if="e.notes" class="note small">{{ e.notes.length > 140 ? `${e.notes.slice(0, 140)}…` : e.notes }}</div>
             </div>
-            <button v-if="e.id !== exps.currentId" type="button" class="btn btn-sm" :disabled="locked" :data-testid="`open-${e.id}`" @click="act(() => exps.switchTo(e.id))">Open</button>
-            <button type="button" class="btn btn-sm btn-icon" :disabled="locked" title="Duplicate" :aria-label="`Duplicate ${e.name}`" @click="act(() => exps.duplicate(e.id), 'Duplicated')"><Icon name="copy" :size="13" /></button>
-            <button type="button" class="btn btn-sm btn-icon" :disabled="locked" title="Branch" :aria-label="`Branch ${e.name}`" @click="act(() => exps.branch(e.id), 'Branched')"><Icon name="branch" :size="13" /></button>
-            <ConfirmButton small :disabled="locked" label="" confirm-label="Delete?" :title="`Delete ${e.name}`" :test-id="`delete-${e.id}`" @confirm="act(() => exps.remove(e.id), `Deleted “${e.name}”`)"><Icon name="trash" :size="13" /></ConfirmButton>
+            <button v-if="e.id !== exps.currentId" type="button" class="btn btn-sm" :disabled="blocked" :data-testid="`open-${e.id}`" @click="act(() => exps.switchTo(e.id))">Open</button>
+            <button type="button" class="btn btn-sm btn-icon" :disabled="blocked" title="Duplicate" :aria-label="`Duplicate ${e.name}`" @click="act(() => exps.duplicate(e.id), 'Duplicated')"><Icon name="copy" :size="13" /></button>
+            <button type="button" class="btn btn-sm btn-icon" :disabled="blocked" title="Branch" :aria-label="`Branch ${e.name}`" @click="act(() => exps.branch(e.id), 'Branched')"><Icon name="branch" :size="13" /></button>
+            <ConfirmButton small :disabled="blocked" label="" confirm-label="Delete?" :title="`Delete ${e.name}`" :test-id="`delete-${e.id}`" @confirm="act(() => exps.remove(e.id), `Deleted “${e.name}”`)"><Icon name="trash" :size="13" /></ConfirmButton>
           </li>
         </ul>
       </template>
@@ -327,7 +391,7 @@ function parentLabel(e: Experiment) {
               <option v-for="s in sources" :key="s.key" :value="s.key">{{ s.label }}</option>
             </select>
           </div>
-          <button type="button" class="btn btn-primary" :disabled="comparing || !keyA || !keyB" data-testid="compare-run" @click="runCompare"><Icon name="compare" :size="14" /> {{ comparing ? 'Comparing…' : 'Compare' }}</button>
+          <button type="button" class="btn btn-primary" :disabled="locked || comparing || !keyA || !keyB" data-testid="compare-run" @click="runCompare"><Icon name="compare" :size="14" /> {{ comparing ? 'Comparing…' : 'Compare' }}</button>
         </div>
         <div v-if="compareError" class="callout callout-critical" role="alert">{{ compareError }}</div>
         <div v-if="comparison" class="stack" data-testid="compare-result">
@@ -341,22 +405,22 @@ function parentLabel(e: Experiment) {
                 <tbody>
                   <tr><th>Number Inspector</th><td class="mono wrap">{{ comparison.a.inspector }}</td><td class="mono wrap">{{ comparison.b.inspector }}</td></tr>
                   <tr><th>Workbench data</th><td>{{ comparison.a.workbenchData }}</td><td>{{ comparison.b.workbenchData }}</td></tr>
-                  <tr v-for="r in wbRows" :key="`wb-${r.name}`">
+                  <tr v-for="r in wbRows" :key="`wb-${r.key}`">
                     <th>Variant “{{ r.name }}”</th>
                     <td class="nums">{{ r.a ? `MSE ${fmt(r.a.mse, 4)} · SNR ${db(r.a.snr)} · ${fmt(r.a.bits, 4)} bits/elem` : '—' }}</td>
                     <td class="nums">{{ r.b ? `MSE ${fmt(r.b.mse, 4)} · SNR ${db(r.b.snr)} · ${fmt(r.b.bits, 4)} bits/elem` : '—' }}</td>
                   </tr>
                   <tr>
                     <th>Matrix result</th>
-                    <td class="nums">max |error| {{ fmt(comparison.a.matrix.maxError, 4) }} · RMSE {{ fmt(comparison.a.matrix.rmse, 4) }}</td>
-                    <td class="nums">max |error| {{ fmt(comparison.b.matrix.maxError, 4) }} · RMSE {{ fmt(comparison.b.matrix.rmse, 4) }}</td>
+                    <td class="nums">{{ matrixText(comparison.a.matrix) }}</td>
+                    <td class="nums">{{ matrixText(comparison.b.matrix) }}</td>
                   </tr>
                   <tr>
                     <th>Network baseline accuracy</th>
                     <td class="num">{{ pct(comparison.a.networkBaselineAccuracy) }}</td>
                     <td class="num">{{ pct(comparison.b.networkBaselineAccuracy) }}</td>
                   </tr>
-                  <tr v-for="r in nnRows" :key="`nn-${r.name}`">
+                  <tr v-for="r in nnRows" :key="`nn-${r.key}`">
                     <th>Network “{{ r.name }}”</th>
                     <td class="nums">{{ r.a ? `agreement ${pct(r.a.agreement)} · accuracy ${pct(r.a.accuracy)}` : '—' }}</td>
                     <td class="nums">{{ r.b ? `agreement ${pct(r.b.agreement)} · accuracy ${pct(r.b.accuracy)}` : '—' }}</td>
@@ -445,9 +509,8 @@ h3 {
   margin-top: 2px;
 }
 .errors {
-  margin: 0;
-  padding-left: 26px;
-  display: block;
+  margin: 4px 0 0;
+  padding-left: 20px;
 }
 .compare-pick {
   display: grid;

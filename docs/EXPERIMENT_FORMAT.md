@@ -16,7 +16,7 @@ Experiments are exported as UTF-8 JSON files (`*.aql.json`). One file holds one 
 | Field | Meaning |
 |---|---|
 | `format` | Always `ai-quantization-laboratory/experiment`. Files with another value are rejected. |
-| `schemaVersion` | Version of the state schema. Older versions are migrated on import (`migrate()` in `validate.ts`). Newer versions are rejected with a request to update the application. |
+| `schemaVersion` | Version of the state schema; currently 1, the only version so far. Files from a newer version are rejected with a request to update the application. `migrate()` in `validate.ts` is the hook through which future versions will upgrade older files; at version 1 it changes nothing. |
 | `exportedAt` | ISO-8601 timestamp. Informational only. |
 | `experiments` | A non-empty array of experiments. |
 
@@ -67,7 +67,7 @@ Imports are validated completely before anything is stored. An invalid file is r
   - A quantization axis must be valid for its tensor.
   - Activation per-channel scaling must use axis 1.
   - Every variant id referenced as active must exist.
-  - A label is required for each sample.
+  - Labels are optional (`null`); when present, there must be exactly one per sample.
 - **Size limits:**
   - 2²⁰ data values per workbench tensor.
   - 4096 rows or columns, and 65 536 values, per matrix operand.

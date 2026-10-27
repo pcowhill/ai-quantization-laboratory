@@ -4,6 +4,7 @@ import { beforeEach, describe, expect, it } from 'vitest';
 import ExperimentPanel from '@/components/experiments/ExperimentPanel.vue';
 import { useExperimentsStore } from '@/stores/experiments';
 import { useLabStore } from '@/stores/lab';
+import { useLessonsStore } from '@/stores/lessons';
 
 const settle = async () => {
   await new Promise((r) => setTimeout(r, 60));
@@ -18,7 +19,7 @@ async function setup() {
   await exps.init();
   const w = mount(ExperimentPanel, { global: { plugins: [pinia] }, attachTo: document.body });
   await flushPromises();
-  return { w, exps, lab: useLabStore(pinia) };
+  return { w, exps, lab: useLabStore(pinia), pinia };
 }
 const tabTo = async (w: Awaited<ReturnType<typeof setup>>['w'], label: string) => {
   const b = w.findAll('[role="radio"]').find((x) => x.text() === label)!;
@@ -150,6 +151,81 @@ describe('Experiment panel', () => {
   it('warns when experiments are kept only in memory', async () => {
     const { w } = await setup();
     expect(w.find('[data-testid="memory-only"]').exists()).toBe(true); // jsdom has no IndexedDB
+    w.unmount();
+  });
+
+  it('saves notes typed without a change event (debounced) and when the panel closes', async () => {
+    const { w, exps } = await setup();
+    const notes = w.get('#exp-notes');
+    (notes.element as HTMLTextAreaElement).value = 'typed';
+    await notes.trigger('input');
+    await new Promise((r) => setTimeout(r, 650));
+    await flushPromises();
+    expect(exps.current?.notes).toBe('typed');
+    (notes.element as HTMLTextAreaElement).value = 'typed, then closed';
+    await notes.trigger('input');
+    w.unmount();
+    await flushPromises();
+    expect(exps.current?.notes).toBe('typed, then closed');
+  });
+
+  it('a double click on Duplicate creates one copy', async () => {
+    const { w, exps } = await setup();
+    const b = w.get('[data-testid="exp-duplicate"]');
+    await Promise.all([b.trigger('click'), b.trigger('click')]);
+    await settle();
+    expect(exps.experiments).toHaveLength(2);
+    w.unmount();
+  });
+
+  it('reset of all laboratories is undoable and keeps other experiments', async () => {
+    const { w, exps, lab } = await setup();
+    await exps.createExperiment('Other');
+    lab.state.inspector.input = '3.5';
+    lab.state.matrix.scalar = 9;
+    await new Promise((r) => setTimeout(r, 400));
+    const btn = w.get('[data-testid="reset-all"]');
+    await btn.trigger('click');
+    await btn.trigger('click');
+    expect(lab.state.inspector.input).toBe('0.1');
+    expect(lab.state.matrix.scalar).not.toBe(9);
+    expect(exps.experiments).toHaveLength(2);
+    exps.undo();
+    expect(lab.state.inspector.input).toBe('3.5');
+    expect(lab.state.matrix.scalar).toBe(9);
+    w.unmount();
+  });
+
+  it('locks every experiment action during a lesson', async () => {
+    const { w, exps, pinia } = await setup();
+    await exps.takeSnapshot('s');
+    await flushPromises();
+    useLessonsStore(pinia).start('networks');
+    await flushPromises();
+    expect(w.text()).toContain('A guided lesson is running');
+    for (const id of ['exp-name', 'exp-duplicate', 'exp-branch', 'take-snapshot', 'reset-all', 'reset-inspector', `restore-${exps.current!.snapshots[0]!.id}`]) {
+      expect((w.get(`[data-testid="${id}"]`).element as HTMLButtonElement).disabled, id).toBe(true);
+    }
+    expect(() => exps.resetAllLabs()).toThrow(/lesson/);
+    expect(() => exps.restoreSnapshot(exps.current!.snapshots[0]!.id)).toThrow(/lesson/);
+    await expect(exps.deleteSnapshot(exps.current!.snapshots[0]!.id)).rejects.toThrow(/lesson/);
+    await tabTo(w, 'Compare');
+    expect((w.get('[data-testid="compare-run"]').element as HTMLButtonElement).disabled).toBe(true);
+    useLessonsStore(pinia).exit();
+    w.unmount();
+  });
+
+  it('compare keeps variants that share a name', async () => {
+    const { w, exps, lab } = await setup();
+    const v = lab.state.workbench.variants[0]!;
+    lab.state.workbench.variants.push({ ...JSON.parse(JSON.stringify(v)), id: 'v9', config: { ...v.config, format: 'int4' } });
+    await exps.takeSnapshot('base');
+    await tabTo(w, 'Compare');
+    await w.get('[data-testid="compare-run"]').trigger('click');
+    await settle();
+    const text = w.get('[data-testid="compare-result"]').text();
+    expect(text).toContain(`Variant “${v.name}”`);
+    expect(text).toContain(`Variant “${v.name} (2)”`);
     w.unmount();
   });
 });

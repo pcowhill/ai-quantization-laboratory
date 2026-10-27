@@ -19,14 +19,31 @@ export interface OfflineStatus {
 export const updateReady = ref(false);
 let waiting: ServiceWorker | null = null;
 let reloading = false;
+let beforeReload: () => Promise<void> = async () => undefined;
+
+/** Registers work (e.g. saving the experiment) that must finish before a version-change reload. */
+export function setBeforeReload(fn: () => Promise<void>) {
+  beforeReload = fn;
+}
+
+async function reloadNow() {
+  if (reloading) return;
+  reloading = true;
+  try {
+    await beforeReload();
+  } finally {
+    window.location.reload();
+  }
+}
 
 export function dismissUpdate() {
   updateReady.value = false;
 }
 
-export function applyUpdate() {
-  if (!waiting) return;
-  reloading = true;
+export async function applyUpdate() {
+  // Another tab may already have activated the new worker: then a reload is all that is left.
+  if (!waiting || waiting.state === 'activated' || waiting.state === 'redundant') return reloadNow();
+  await beforeReload();
   waiting.postMessage({ type: 'skip-waiting' });
 }
 
@@ -49,8 +66,14 @@ function watchForWaiting(reg: ServiceWorkerRegistration) {
 
 export function registerServiceWorker() {
   if (!import.meta.env.PROD || !('serviceWorker' in navigator)) return;
+  // When a worker takes control of a page that was already controlled, a new
+  // version has been activated (from this tab or any other): every such page
+  // reloads, so no tab keeps running old code against the new cache. The first
+  // controller (initial install, via clients.claim) only marks the page controlled.
+  let controlled = navigator.serviceWorker.controller !== null;
   navigator.serviceWorker.addEventListener('controllerchange', () => {
-    if (reloading) window.location.reload();
+    if (controlled) void reloadNow();
+    controlled = true;
   });
   window.addEventListener('load', () => {
     navigator.serviceWorker

@@ -36,9 +36,11 @@ function click() {
 </template>
 
 <style scoped>
-.armed {
+/* Also while hovered: the global .btn:hover rule must not override the armed colours. */
+.btn.armed,
+.btn.armed:hover:not(:disabled) {
   background: var(--critical);
   border-color: var(--critical);
-  color: #fff;
+  color: var(--text-on-critical);
 }
 </style>

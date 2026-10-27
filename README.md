@@ -4,7 +4,7 @@ An interactive, offline-capable educational workbench. It shows how numbers are 
 
 **Live application:** https://pcowhill.github.io/ai-quantization-laboratory/
 
-Everything runs in your browser. There is no server-side component, no account and no analytics, and nothing you enter or import is uploaded. After the first visit the application also works offline.
+Everything runs in your browser. There is no server-side component, no account and no analytics, and nothing you enter or import is uploaded. In browsers with service workers, the application also works offline once the first visit has finished storing its files; **Help → Offline use** shows when that is complete.
 
 ## What you can do
 
@@ -21,7 +21,7 @@ There are also eleven **guided lessons** that set up the real laboratories, and 
 
 - Number formats are simulated **exactly** on top of binary64: conversions, rounding modes and overflow rules follow the cited specifications (IEEE 754-2019, OCP OFP8 and MX v1.0). They are verified against independent references (ml_dtypes, NumPy, C `fesetround`, exact rationals); see [docs/NUMERICS.md](docs/NUMERICS.md).
 - Arithmetic is simulated with explicit "round after every operation" rules. It is **not** a model of any particular GPU instruction or kernel. Accumulation order and internal precision of real hardware vary.
-- "MX-style" block scaling implements the MX v1.0 power-of-two shared-scale rule (§6.3) with E8M0 scales. It is labelled as an MX-style simulation, not as a hardware-equivalent MXFP4/NVFP4 implementation.
+- The **MXFP4** and **MXFP8** presets implement the OCP MX v1.0 schemes as specified: blocks of 32, an E8M0 shared scale chosen by the §6.3 power-of-two rule, and saturating element conversion with RNE (verified by tests). They simulate the format's quantization numerically. They are not a model of any hardware's MX instructions. The **MXINT8-equivalent** preset folds MX INT8's implicit 2⁻⁶ into the scale, which is numerically equivalent. **NVFP4** (with its two-level scaling) is not implemented.
 - Storage figures are estimates of the bits needed for elements and scales. They are **not** predictions of memory bandwidth, speed or energy.
 
 ## Getting started
@@ -53,7 +53,7 @@ To serve the build under another path, set `BASE_PATH`, for example `BASE_PATH=/
 | **Numerical verification** (`tests/numerics`) | All decodings of the 4- and 8-bit formats, and of every FP16 and BF16 pattern; round-to-nearest-even and directed-rounding conversions; arithmetic; the PRNG; quantization; dot products. All are checked against fixtures from independent implementations ([tests/fixtures/README.md](tests/fixtures/README.md)). Also property-based tests (fast-check) for rounding, monotonicity, round-trips and metric identities, and network forward passes checked against a NumPy reference. |
 | **Unit** (`tests/unit`) | State schema and validation (including NaN/∞/−0 round-trips), stores, chart-data fidelity, lesson solvability, and the numerical claims made in scenario and lesson text. |
 | **Component** (`tests/component`) | Laboratories and panels mounted in jsdom: input handling, validation messages, experiment management, and undo/redo. |
-| **End-to-end** (`e2e`) | User journeys at desktop, tablet and phone sizes. Includes an offline test (reload without a network and use every laboratory) and WCAG 2.1 A/AA audits with axe in light and dark themes. |
+| **End-to-end** (`e2e`) | User journeys at desktop, tablet and phone sizes. Includes an offline test (reload without a network and use every laboratory) and WCAG 2.1 A/AA audits with axe in light and dark themes, covering every laboratory, panel and tab. |
 
 ## Deployment
 

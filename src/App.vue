@@ -7,7 +7,7 @@ import { useExperimentsStore } from '@/stores/experiments';
 import { useLabStore } from '@/stores/lab';
 import { useLessonsStore } from '@/stores/lessons';
 import { useUiStore } from '@/stores/ui';
-import { applyUpdate, dismissUpdate, updateReady } from '@/pwa/register';
+import { applyUpdate, dismissUpdate, setBeforeReload, updateReady } from '@/pwa/register';
 
 /** Lazily loaded component with a loading placeholder and a visible load error. */
 function lazy(loader: () => Promise<{ default: Component }>) {
@@ -55,18 +55,33 @@ function onKey(e: KeyboardEvent) {
   }
 }
 
-async function reloadForUpdate() {
-  // Save pending edits before the page reloads into the new version.
+/** Saves pending edits; used before a version-change reload and when the page is hidden or closed. */
+async function savePending() {
+  if (!exps.ready) return;
   exps.flushHistory();
   await exps.saveCurrent();
-  applyUpdate();
+}
+setBeforeReload(savePending);
+
+function reloadForUpdate() {
+  void applyUpdate();
+}
+
+function onVisibility() {
+  if (document.visibilityState === 'hidden') void savePending();
 }
 
 onMounted(() => {
   void exps.init();
   window.addEventListener('keydown', onKey);
+  document.addEventListener('visibilitychange', onVisibility);
+  window.addEventListener('pagehide', savePending);
 });
-onBeforeUnmount(() => window.removeEventListener('keydown', onKey));
+onBeforeUnmount(() => {
+  window.removeEventListener('keydown', onKey);
+  document.removeEventListener('visibilitychange', onVisibility);
+  window.removeEventListener('pagehide', savePending);
+});
 </script>
 
 <template>
@@ -175,7 +190,7 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onKey));
 }
 .toast.error {
   background: var(--critical);
-  color: #fff;
+  color: var(--text-on-critical);
 }
 .toast.success {
   background: var(--accent);

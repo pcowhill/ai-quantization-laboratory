@@ -8,7 +8,7 @@
  * base path (e.g. GitHub Pages' /<repository>/).
  */
 import { createHash } from 'node:crypto';
-import { readdirSync, readFileSync, statSync } from 'node:fs';
+import { existsSync, readdirSync, readFileSync, statSync } from 'node:fs';
 import { join, relative, sep } from 'node:path';
 import type { Plugin } from 'vite';
 
@@ -23,19 +23,37 @@ function listFiles(dir: string): string[] {
 }
 
 const WORKER_SOURCE = String.raw`
-const CACHE = 'aql-' + VERSION;
+// Cache names include the scope, so deployments at other paths of the same
+// origin (forks, previews) never delete each other's caches.
+const PREFIX = 'aql:' + new URL(self.registration.scope).pathname + ':';
+const CACHE = PREFIX + VERSION;
+const MARKER = '__aql_installed_at';
 
 self.addEventListener('install', (event) => {
   event.waitUntil(
-    caches.open(CACHE).then((cache) => cache.addAll(ASSETS.map((a) => new Request(a, { cache: 'reload' })))),
+    caches.open(CACHE).then(async (cache) => {
+      await cache.addAll(ASSETS.map((a) => new Request(a, { cache: 'reload' })));
+      await cache.put(MARKER, new Response(String(Date.now())));
+    }),
   );
 });
 
 self.addEventListener('activate', (event) => {
   event.waitUntil(
     (async () => {
+      // Keep the most recent previous version: pages still running it reload as soon
+      // as this worker takes control, and until then may fetch their own files.
+      // Anything older is deleted.
       const keys = await caches.keys();
-      await Promise.all(keys.filter((k) => k.startsWith('aql-') && k !== CACHE).map((k) => caches.delete(k)));
+      const previous = [];
+      for (const k of keys) {
+        if (k.startsWith('aql-')) await caches.delete(k); // naming used before scoped caches
+        if (!k.startsWith(PREFIX) || k === CACHE) continue;
+        const m = await (await caches.open(k)).match(MARKER);
+        previous.push({ k, t: m ? Number(await m.text()) : 0 });
+      }
+      previous.sort((a, b) => b.t - a.t);
+      await Promise.all(previous.slice(1).map((p) => caches.delete(p.k)));
       await self.clients.claim();
     })(),
   );
@@ -73,17 +91,31 @@ self.addEventListener('fetch', (event) => {
       const nav = req.mode === 'navigate';
       const hit = await cache.match(nav ? 'index.html' : url.href, { ignoreSearch: nav, ignoreVary: true });
       if (hit) return hit;
+      // A page of the previous version (about to reload) may still ask for its own
+      // hashed files; serve them from any of this scope's caches while they exist.
+      if (!nav) {
+        for (const k of await caches.keys()) {
+          if (!k.startsWith(PREFIX) || k === CACHE) continue;
+          const old = await (await caches.open(k)).match(url.href, { ignoreVary: true });
+          if (old) return old;
+        }
+      }
       return fetch(req);
     })(),
   );
 });
 `;
 
-export function serviceWorker(publicDir = 'public'): Plugin {
+export function serviceWorker(): Plugin {
+  let publicDir = '';
   return {
     name: 'aql-service-worker',
     apply: 'build',
     enforce: 'post',
+    configResolved(config) {
+      // Absolute, so builds started from another directory work.
+      publicDir = config.publicDir;
+    },
     generateBundle(_options, bundle) {
       const hash = createHash('sha256');
       const assets = new Set<string>();
@@ -93,7 +125,7 @@ export function serviceWorker(publicDir = 'public'): Plugin {
         hash.update(fileName);
         hash.update(item.type === 'chunk' ? item.code : item.source);
       }
-      for (const file of listFiles(publicDir).sort()) {
+      for (const file of publicDir && existsSync(publicDir) ? listFiles(publicDir).sort() : []) {
         const rel = relative(publicDir, file).split(sep).join('/');
         assets.add(rel);
         hash.update(rel);

@@ -73,12 +73,13 @@ Workbench evaluation, network evaluation and decision grids run in a module Web 
 - Design tokens are in `styles/tokens.css`: light-first, with a separately tuned dark theme and a categorical palette validated for colour-vision deficiency.
 
 ### Offline support (`build/serviceWorker.ts`, `src/pwa`)
-A small Vite plugin writes `sw.js` at build time. Its precache list contains every emitted file (except source maps) and every file in `public/`, and its version is a content hash of the whole build. The worker behaves as follows:
+A small Vite plugin writes `sw.js` at build time. Its precache list contains every emitted file (except source maps) and every file in `public/`, and its version is a content hash of the whole build. Cache names include the scope, so deployments at different paths of one origin never interfere. The worker behaves as follows:
 - On **install** it caches every file.
-- On **activate** it deletes caches from older versions.
+- On **activate** it keeps the most recent previous version's cache, so pages still running that version can finish loading their files, and deletes anything older.
 - **Fetching** serves precached files by URL, cache-first. Navigations inside the app get the cached app shell.
+- **Version changes:** every open tab that was running the previous version reloads as soon as the new worker takes control, after saving its current experiment.
 
-Paths are relative to the worker scope, so the same build works under any base path. When a new deployment is detected, the page shows *Reload now / Later*. It saves the current experiment before reloading.
+Paths are relative to the worker scope, so the same build works under any base path. When a new deployment is detected, the page shows *Reload now / Later*. The current experiment is also saved whenever the page is hidden or closed.
 
 The Help panel reports offline readiness only after the worker confirms that every precached file is actually in its cache. An end-to-end test checks offline behaviour by reloading without a network and using every laboratory.
 
@@ -86,5 +87,5 @@ The Help panel reports offline readiness only after the worker confirms that eve
 - Vite builds static files into `dist/`, with `base` set to `/<repository>/` for GitHub Pages (override it with `BASE_PATH`). ECharts and Vue are split into long-lived vendor chunks.
 - `.github/workflows/ci.yml` runs on every pull request and on pushes to `main`:
   - typecheck, lint, unit and numerical tests, component tests and the build;
-  - Playwright end-to-end tests at desktop, tablet and phone sizes, including offline and accessibility (axe) audits.
+  - Playwright end-to-end tests at desktop, tablet and phone sizes, including offline tests and accessibility (axe) audits.
 - `.github/workflows/deploy.yml` deploys to GitHub Pages on pushes to `main`. It runs the checks, builds, adds a `404.html` fallback and publishes with the official Pages actions.

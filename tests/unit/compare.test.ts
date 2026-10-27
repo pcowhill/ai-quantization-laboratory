@@ -47,4 +47,14 @@ describe('experiment comparison', () => {
     expect(s.network.length).toBeGreaterThan(0);
     expect(s.networkBaselineAccuracy).not.toBeNull();
   });
+  it('reports non-finite matrix outputs and invalid set-ups instead of hiding them', () => {
+    const s = defaultExperimentState();
+    s.matrix = { ...s.matrix, op: 'dot', A: { rows: 1, cols: 2, values: [60000, 60000] }, B: { rows: 2, cols: 1, values: [1, 1] }, quantA: null, quantB: null, arith: { ...s.matrix.arith, productFormat: 'fp16', accumulatorFormat: 'fp16', outputFormat: 'fp16' } };
+    const r = summarizeResults(s).matrix;
+    expect(r.nonFinite).toBe(1);
+    expect(r.finite).toBe(0);
+    expect(r.error).toBeNull();
+    s.matrix = { ...s.matrix, op: 'matmul', A: { rows: 2, cols: 3, values: [1, 2, 3, 4, 5, 6] }, B: { rows: 2, cols: 3, values: [1, 2, 3, 4, 5, 6] } };
+    expect(summarizeResults(s).matrix.error).toMatch(/./);
+  });
 });
