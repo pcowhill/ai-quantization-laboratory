@@ -65,7 +65,7 @@ function randomize() {
       <NumberField v-model="rows" label="Rows" :min="1" :max="maxDim" integer :disabled="fixedRows !== undefined" />
       <NumberField v-model="cols" label="Columns" :min="1" :max="maxDim" integer :disabled="fixedCols !== undefined" />
     </div>
-    <div v-if="gridMode" class="cells" :style="{ gridTemplateColumns: `repeat(${m.cols}, minmax(52px, 1fr))` }" role="grid" :aria-label="`Matrix ${name}`">
+    <div v-if="gridMode" class="cells" :style="{ gridTemplateColumns: `repeat(${m.cols}, minmax(52px, 1fr))` }" role="group" :aria-label="`Matrix ${name}`">
       <input
         v-for="(v, i) in m.values"
         :key="`${m.rows}x${m.cols}-${i}`"

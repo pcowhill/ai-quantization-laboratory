@@ -36,17 +36,16 @@ function rename(v: QuantVariant, name: string) {
 
 <template>
   <div class="variants">
-    <ul class="vlist" role="listbox" aria-label="Quantization variants">
+    <ul class="vlist" aria-label="Quantization variants">
       <li
         v-for="v in variants"
         :key="v.id"
-        role="option"
-        :aria-selected="v.id === active"
         class="vitem"
         :class="{ active: v.id === active, disabled: !v.enabled }"
         :data-testid="`variant-${v.id}`"
         @click="active = v.id"
       >
+        <input type="radio" name="wb-active-variant" :checked="v.id === active" :aria-label="`Edit ${v.name}`" @change="active = v.id" @click.stop />
         <span class="swatch" :style="{ background: `var(--series-${variantSlot(v.id) + 1})` }" aria-hidden="true" />
         <input class="vname" :value="v.name" :aria-label="`Name of variant ${v.id}`" @change="rename(v, ($event.target as HTMLInputElement).value)" @click.stop />
         <label class="check" :title="v.enabled ? 'Included in comparison' : 'Excluded'" @click.stop>

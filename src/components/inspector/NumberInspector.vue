@@ -295,7 +295,7 @@ const showOverflow = computed(() => isFloat.value && characteristics(fmtDef.valu
               </thead>
               <tbody>
                 <tr v-for="c in result.comparison" :key="c.formatId" :class="{ selected: c.formatId === s.format }" style="cursor: pointer" @click="changeFormat(c.formatId)">
-                  <th scope="row">{{ c.formatName }}</th>
+                  <th scope="row"><button type="button" class="row-select" :aria-pressed="c.formatId === s.format" :title="`Inspect in ${c.formatName}`" @click.stop="changeFormat(c.formatId)">{{ c.formatName }}</button></th>
                   <td class="num" :title="`Exact: ${c.exactStored}`">{{ storedDisplay(c) }}</td>
                   <td class="num">0x{{ c.hex }}</td>
                   <td>{{ classLabel(c) }}</td>
@@ -450,6 +450,6 @@ const showOverflow = computed(() => isFloat.value && characteristics(fmtDef.valu
 }
 .flags {
   font-size: 11.5px;
-  color: var(--text-3);
+  color: var(--text-2);
 }
 </style>

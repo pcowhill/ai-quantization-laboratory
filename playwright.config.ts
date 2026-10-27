@@ -19,6 +19,8 @@ export default defineConfig({
   projects: [
     { name: 'desktop', use: { ...devices['Desktop Chrome'], viewport: { width: 1440, height: 900 } } },
     { name: 'tablet', use: { ...devices['Desktop Chrome'], viewport: { width: 820, height: 1180 }, hasTouch: true } },
+    // Small screens: the shell, experiments and offline flows must work at phone width too.
+    { name: 'phone', testMatch: /(smoke|experiments|offline)\.spec\.ts/, use: { ...devices['Desktop Chrome'], viewport: { width: 390, height: 844 }, hasTouch: true } },
   ],
   webServer: process.env.E2E_BASE_URL
     ? undefined

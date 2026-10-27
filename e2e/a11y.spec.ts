@@ -1,0 +1,40 @@
+import AxeBuilder from '@axe-core/playwright';
+import { expect, test, type Page } from '@playwright/test';
+
+/** Runs axe (WCAG 2.1 A/AA rules) and returns readable violations. */
+async function audit(page: Page) {
+  const r = await new AxeBuilder({ page })
+    .withTags(['wcag2a', 'wcag2aa', 'wcag21a', 'wcag21aa'])
+    // Chart canvases are decorative to axe; each has a labelled region and a table view.
+    .exclude('canvas')
+    .analyze();
+  return r.violations.map((v) => `${v.id} (${v.impact}): ${v.help} — ${v.nodes.slice(0, 3).map((n) => n.target.join(' ')).join(' | ')}`);
+}
+
+for (const theme of ['light', 'dark'] as const) {
+  test(`no WCAG A/AA violations in any laboratory or panel (${theme})`, async ({ page }) => {
+    await page.emulateMedia({ colorScheme: theme });
+    await page.goto('./');
+    await expect(page.getByTestId('inspector-stored')).toBeVisible();
+    const found: string[] = [];
+    found.push(...(await audit(page)).map((v) => `inspector: ${v}`));
+    for (const [name, label] of [[/Quantization/, 'workbench'], [/Matri/, 'matrix'], [/Network/, 'network']] as const) {
+      await page.getByRole('tab', { name }).click();
+      await page.waitForTimeout(1200);
+      found.push(...(await audit(page)).map((v) => `${label}: ${v}`));
+    }
+    await page.getByTestId('open-experiments').click();
+    found.push(...(await audit(page)).map((v) => `experiments: ${v}`));
+    await page.keyboard.press('Escape');
+    await page.getByRole('button', { name: 'About and help' }).click();
+    found.push(...(await audit(page)).map((v) => `help: ${v}`));
+    await page.keyboard.press('Escape');
+    await page.getByTestId('open-lessons').click();
+    found.push(...(await audit(page)).map((v) => `lesson catalog: ${v}`));
+    await page.getByTestId('start-lesson-networks').click();
+    await expect(page.getByTestId('lesson-panel')).toBeVisible();
+    await page.waitForTimeout(1200);
+    found.push(...(await audit(page)).map((v) => `lesson: ${v}`));
+    expect(found).toEqual([]);
+  });
+}

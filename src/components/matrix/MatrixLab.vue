@@ -74,6 +74,7 @@ const traceSteps = computed(() => {
   return showAllSteps.value || st.length <= 40 ? st : st.slice(0, 20).concat(st.slice(-20));
 });
 
+const cellLabel = (k: number) => (ev.value.outRows > 1 || ev.value.outCols > 1 ? `[${Math.floor(k / ev.value.outCols)}, ${k % ev.value.outCols}]` : `[${k}]`);
 function selectCell(k: number) {
   m.value.selectedCell = [Math.floor(k / ev.value.outCols), k % ev.value.outCols];
 }
@@ -186,7 +187,10 @@ const outCells = computed(() => Array.from({ length: Math.min(ev.value.simulated
               </thead>
               <tbody>
                 <tr v-for="k in outCells" :key="k" :class="{ selected: usesReduction && k === selectedIndex }" :style="usesReduction ? 'cursor:pointer' : ''" @click="usesReduction && selectCell(k)">
-                  <th scope="row">{{ ev.outRows > 1 || ev.outCols > 1 ? `[${Math.floor(k / ev.outCols)}, ${k % ev.outCols}]` : `[${k}]` }}</th>
+                  <th scope="row">
+                    <button v-if="usesReduction" type="button" class="row-select" :aria-pressed="k === selectedIndex" title="Trace this output" @click.stop="selectCell(k)">{{ cellLabel(k) }}</button>
+                    <template v-else>{{ cellLabel(k) }}</template>
+                  </th>
                   <td class="num">{{ fmt(ev.baseline[k], 10) }}</td>
                   <td class="num">{{ fmt(ev.exactOriginal[k], 10) }}</td>
                   <td class="num">{{ fmt(ev.exactStored[k], 10) }}</td>
@@ -224,7 +228,7 @@ const outCells = computed(() => Array.from({ length: Math.min(ev.value.simulated
             <h2>Step-by-step: entry [{{ m.selectedCell[0] }}, {{ m.selectedCell[1] }}] <span class="muted small">({{ m.arith.order }} order)</span></h2>
             <label v-if="ev.trace.steps.length > 40" class="check small"><input v-model="showAllSteps" type="checkbox" /> Show all {{ ev.trace.steps.length }} steps</label>
           </div>
-          <div class="card-body table-wrap trace">
+          <div class="card-body table-wrap trace" tabindex="0" role="region" aria-label="Step-by-step accumulation table">
             <p v-if="m.arith.order === 'pairwise' || m.arith.order === 'kahan'" class="callout small">The table lists products in input order; with {{ m.arith.order }} summation the partial sums are combined differently, so only the final value and per-product rounding are shown.</p>
             <table class="table" data-testid="dot-trace">
               <thead>

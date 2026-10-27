@@ -222,6 +222,7 @@ export const useExperimentsStore = defineStore('experiments', () => {
   }
 
   async function duplicate(id: string) {
+    assertNotInLesson();
     await saveCurrent();
     const src = experiments.value.find((e) => e.id === id);
     if (!src) return null;
@@ -236,6 +237,7 @@ export const useExperimentsStore = defineStore('experiments', () => {
 
   /** Branch: a new experiment whose parent is `id`, starting from its current state or one of its snapshots. */
   async function branch(id: string, snapshotId?: string, name?: string) {
+    assertNotInLesson();
     await saveCurrent();
     const src = experiments.value.find((e) => e.id === id);
     if (!src) return null;
@@ -265,6 +267,7 @@ export const useExperimentsStore = defineStore('experiments', () => {
 
   /** Deletes one experiment (never more than one at a time). */
   async function remove(id: string) {
+    assertNotInLesson();
     const idx = experiments.value.findIndex((e) => e.id === id);
     if (idx < 0) return;
     const wasCurrent = id === currentId.value;
@@ -310,6 +313,13 @@ export const useExperimentsStore = defineStore('experiments', () => {
   function resetLab(labId: LabId) {
     flushHistory();
     lab.resetLab(labId);
+  }
+
+  /** Resets every laboratory of the current experiment (undoable); other experiments are untouched. */
+  function resetAllLabs() {
+    flushHistory();
+    const keep = lab.state.lab;
+    lab.replace({ ...defaultExperimentState(), lab: keep });
   }
 
   function exportJson(ids: string[]): string {
@@ -366,6 +376,7 @@ export const useExperimentsStore = defineStore('experiments', () => {
     restoreSnapshot,
     deleteSnapshot,
     resetLab,
+    resetAllLabs,
     exportJson,
     importJson,
   };
