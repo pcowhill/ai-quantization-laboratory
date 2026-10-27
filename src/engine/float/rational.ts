@@ -37,7 +37,8 @@ function pow10(k: number): bigint {
   return 10n ** BigInt(k);
 }
 
-function parseDecimal(s: string): { num: bigint; den: bigint } {
+/** Decimal literal as mant · 10^exp10 (unclamped). */
+function parseDecimal(s: string): { mant: bigint; exp10: number } {
   const m = /^(\d*)(?:\.(\d*))?(?:[eE]([+-]?\d+))?$/.exec(s);
   if (!m || (m[1] === '' && (m[2] === undefined || m[2] === ''))) {
     throw new NumberParseError(`"${s}" is not a valid decimal number`);
@@ -46,13 +47,20 @@ function parseDecimal(s: string): { num: bigint; den: bigint } {
   const fracPart = m[2] ?? '';
   const digits = (intPart + fracPart).replace(/^0+/, '') || '0';
   if (digits.length > MAX_DIGITS) throw new NumberParseError(`Too many digits (max ${MAX_DIGITS})`);
-  let exp10 = (m[3] ? parseInt(m[3], 10) : 0) - fracPart.length;
-  // Clamp absurd exponents: beyond ±6000 every supported format has already
-  // overflowed/underflowed, so the rounded result is unchanged.
-  if (exp10 > MAX_EXP10) exp10 = MAX_EXP10;
-  if (exp10 < -MAX_EXP10 - MAX_DIGITS) exp10 = -MAX_EXP10 - MAX_DIGITS;
-  const mant = BigInt(digits);
-  return exp10 >= 0 ? { num: mant * pow10(exp10), den: 1n } : { num: mant, den: pow10(-exp10) };
+  const e = m[3] ? parseInt(m[3], 10) : 0;
+  if (!Number.isFinite(e) || Math.abs(e) > 1e9) throw new NumberParseError('Exponent out of range');
+  return { mant: BigInt(digits), exp10: e - fracPart.length };
+}
+
+/**
+ * Builds the rational (mant/den)·10^exp10. Absurd exponents are clamped:
+ * beyond ±6000 (plus the digit count) every supported format has already
+ * overflowed or underflowed, so the rounded result is unchanged.
+ */
+function scaledRational(mant: bigint, den: bigint, exp10: number): { num: bigint; den: bigint } {
+  const limit = MAX_EXP10 + 2 * MAX_DIGITS;
+  const e = Math.max(-limit, Math.min(MAX_EXP10, exp10));
+  return e >= 0 ? { num: mant * pow10(e), den } : { num: mant, den: den * pow10(-e) };
 }
 
 function parseHexFloat(s: string): { num: bigint; den: bigint } {
@@ -105,14 +113,14 @@ export function parseExact(input: string): ParsedNumber {
       qs = qs.slice(1);
     }
     const b = parseDecimal(qs);
-    if (b.num === 0n) throw new NumberParseError('Division by zero in fraction');
-    num = a.num * b.den;
-    den = a.den * b.num;
+    if (b.mant === 0n) throw new NumberParseError('Division by zero in fraction');
+    ({ num, den } = scaledRational(a.mant, b.mant, a.exp10 - b.exp10));
     if (bNeg) negative = !negative;
   } else if (/^0[xX]/.test(s)) {
     ({ num, den } = parseHexFloat(s));
   } else {
-    ({ num, den } = parseDecimal(s));
+    const d = parseDecimal(s);
+    ({ num, den } = scaledRational(d.mant, 1n, d.exp10));
   }
   const g = gcd(num, den);
   if (g > 1n) {

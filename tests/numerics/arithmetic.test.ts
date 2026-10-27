@@ -158,3 +158,32 @@ describe('integer path', () => {
     expect(Math.abs(s.value.data[0]! - expected) / expected).toBeLessThan(1e-12);
   });
 });
+
+describe('regressions from independent review', () => {
+  it('binary64-overflowing sums and products follow IEEE §7.4 under directed rounding', () => {
+    const rtz = (fmt: 'fp64' | 'fp32') => new ArithMachine(makeArithConfig({ rounding: 'toward-zero', accumulatorFormat: fmt, productFormat: fmt }));
+    expect(rtz('fp64').add(1.5e308, 1.5e308)).toBe(Number.MAX_VALUE);
+    expect(rtz('fp32').mul(1e200, 1e200)).toBe(3.4028234663852886e38);
+    expect(new ArithMachine(makeArithConfig({ rounding: 'toward-negative', productFormat: 'fp32' })).mul(-1e200, 1e200)).toBe(-Infinity);
+    const sat = new ArithMachine(makeArithConfig({ accumulatorFormat: 'fp64', overflow: 'saturate' }));
+    sat.add(1.5e308, 1.5e308);
+    expect(sat.flags & 2).toBeTruthy(); // Overflow flag
+  });
+  it('products near or below the subnormal range are rounded exactly', () => {
+    const ru = new ArithMachine(makeArithConfig({ rounding: 'toward-positive', productFormat: 'fp32' }));
+    expect(ru.mul(2 ** -540, 2 ** -540)).toBe(2 ** -149);
+    const rz = new ArithMachine(makeArithConfig({ rounding: 'toward-zero', productFormat: 'fp64' }));
+    expect(rz.mul(1.5 * 2 ** -600, 2 ** -474)).toBe(2 ** -1074);
+  });
+  it('pairwise summation rounds a single term to the accumulator format', () => {
+    const cfg = makeArithConfig({ productFormat: 'fp32', accumulatorFormat: 'fp16', outputFormat: 'fp32', order: 'pairwise' });
+    expect(simulatedDot([1 + 2 ** -20], [1], cfg).value).toBe(1);
+  });
+  it('integer path reports the true (unwrapped) partial sum', () => {
+    const big = new Float64Array(140000).fill(1);
+    const qa = quantizeTensor(big, [1, 140000], makeQuantConfig({ format: 'int8' }));
+    const qb = quantizeTensor(big, [140000, 1], makeQuantConfig({ format: 'int8' }));
+    const r = integerMatmul(qa, qb, { accumulator: 'int32-wrap', rescaleFormat: 'fp64', outputFormat: 'fp64' });
+    expect(r.maxAbsPartial).toBe(127 * 127 * 140000);
+  });
+});

@@ -176,8 +176,8 @@ export function infInputResult(fmt: FloatFormat, negative: boolean, opts: RoundO
 }
 
 /**
- * Rounds the exact real value `x + lo` to `fmt`. `lo` must satisfy
- * |lo| ≤ ½ ulp(x) (as produced by TwoSum/TwoProduct); pass 0 for a plain
+ * Rounds the exact real value `x + lo` to `fmt`. `x` must be the binary64
+ * round-to-nearest value of x + lo (as produced by TwoSum/TwoProduct); pass 0 for a plain
  * double. Returns the rounded value as a double (every value of every
  * supported format is exactly representable as a double). Flags are written
  * to `lastRound.flags`.
@@ -205,13 +205,15 @@ export function roundFloat(fmt: FloatFormat, x: number, opts: RoundOptions, lo =
   let frac: Frac;
   let fracValue = f;
   if (f === 0) {
+    // |t| can reach exactly q/2 only when the target has 53-bit precision (FP64).
+    const half = Math.abs(t) === q / 2;
     if (t === 0) frac = Frac.Zero;
     else if (t > 0) {
-      frac = Frac.BelowHalf;
+      frac = half ? Frac.Half : Frac.BelowHalf;
       fracValue = t / q;
     } else {
       n -= 1;
-      frac = Frac.AboveHalf;
+      frac = half ? Frac.Half : Frac.AboveHalf;
       fracValue = 1 + t / q;
     }
   } else if (f === 0.5) {

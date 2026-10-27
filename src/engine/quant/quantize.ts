@@ -205,11 +205,20 @@ function paramsFromRange(range: RangeChoice, cfg: QuantConfig, ctx: ElementConte
       rawScale = width / (ctx.qmax - ctx.qmin);
     }
   }
-  if (!(rawScale > 0) || !Number.isFinite(rawScale)) {
-    // Range wider than FP64 can express as a scale (e.g. |x| near 1.8e308 with qmax = 7).
+  let rawUnderflow = false;
+  let rawOverflow = false;
+  if (rawScale === 0) {
+    // amax / qmax underflowed in FP64 (subnormal ranges): use the smallest positive double.
+    rawScale = Number.MIN_VALUE;
+    rawUnderflow = true;
+  } else if (!Number.isFinite(rawScale)) {
+    // Range wider than FP64 can express as a scale (e.g. hi − lo overflows).
     rawScale = Number.MAX_VALUE;
+    rawOverflow = true;
   }
   const stored = degenerate ? { scale: 1, underflow: false, overflow: false } : storeScale(rawScale, cfg.scaleFormat);
+  stored.underflow ||= rawUnderflow;
+  stored.overflow ||= rawOverflow;
   const scale = stored.scale;
   let zeroPoint = 0;
   if (!symmetric) {
@@ -424,7 +433,17 @@ export function quantizeValue(
   return { q, recon: out.recon, flags: out.flags };
 }
 
-/** Grid of representable real values for one block (for ≤ 16-bit formats). */
+/**
+ * Calibrates one parameter set from arbitrary values using `cfg`'s scheme and
+ * calibration method (used e.g. for static activation calibration, where a
+ * block's values are gathered from many input samples).
+ */
+export function calibrateValues(values: ArrayLike<number>, cfg: QuantConfig): BlockParams {
+  assertValidConfig(cfg);
+  return calibrateBlock(Float64Array.from(values), cfg, makeContext(cfg));
+}
+
+/** Largest magnitude of the element grid (format max finite or integer qmax). */
 export function elementGridMax(cfg: QuantConfig): number {
   return makeContext(cfg).gridMax;
 }

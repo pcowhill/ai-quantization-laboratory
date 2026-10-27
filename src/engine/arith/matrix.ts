@@ -3,7 +3,7 @@
  * plus an integer-arithmetic path for integer-quantized operands.
  */
 import { roundFloat } from '../float/round';
-import { twoProduct, twoSum } from '../float/double';
+import { twoSum } from '../float/double';
 import { FLOAT_FORMATS } from '../formats/registry';
 import type { FloatFormatId } from '../formats/types';
 import type { QuantResult } from '../quant/quantize';
@@ -129,7 +129,7 @@ export interface IntegerMatmulResult {
   value: Matrix;
   /** Number of entries whose integer accumulator left the INT32 range. */
   int32Overflows: number;
-  /** Largest |integer partial sum| encountered. */
+  /** Largest |integer partial sum| encountered (exact, before any wrap/saturation). */
   maxAbsPartial: number;
   segments: number;
 }
@@ -179,14 +179,14 @@ export function integerMatmul(qa: QuantResult, qb: QuantResult, cfg: IntegerPath
     for (let j = 0; j < N; j++) {
       let acc = 0;
       let segAcc = 0;
+      let trueAcc = 0; // exact (unwrapped) segment sum, for reporting
       let overflowed = false;
       let prevKey = '';
       let sa = 0;
       let sb = 0;
       const flush = () => {
-        const scaleProd = sa * sb;
-        const [p, e] = twoProduct(scaleProd, segAcc);
-        const term = roundFloat(rescale, p, opts, e);
+        // s_A·s_B·Σ is formed exactly and rounded once to the rescale format.
+        const term = new ExactSum().addProduct3(sa, sb, segAcc).roundTo(rescale, opts);
         const [s, t] = twoSum(acc, term);
         acc = roundFloat(rescale, s, opts, t);
         segmentCount++;
@@ -203,8 +203,11 @@ export function integerMatmul(qa: QuantResult, qb: QuantResult, cfg: IntegerPath
           sa = pa.scale;
           sb = pb.scale;
           segAcc = 0;
+          trueAcc = 0;
         }
         const prod = (qa.q[ia]! - pa.zeroPoint) * (qb.q[ib]! - pb.zeroPoint);
+        trueAcc += prod;
+        maxAbsPartial = Math.max(maxAbsPartial, Math.abs(trueAcc));
         let next = segAcc + prod;
         if (next > INT32_MAX || next < INT32_MIN) {
           overflowed = true;
@@ -212,7 +215,6 @@ export function integerMatmul(qa: QuantResult, qb: QuantResult, cfg: IntegerPath
           else if (cfg.accumulator === 'int32-saturate') next = next > 0 ? INT32_MAX : INT32_MIN;
         }
         segAcc = next;
-        maxAbsPartial = Math.max(maxAbsPartial, Math.abs(next));
       }
       if (prevKey !== '') flush();
       if (overflowed) overflows++;

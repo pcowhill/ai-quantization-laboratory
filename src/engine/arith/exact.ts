@@ -6,7 +6,9 @@
  */
 import { doubleToBits } from '../float/double';
 import { FLOAT_FORMATS } from '../formats/registry';
-import { roundParsed } from '../float/rational';
+import { roundParsed, type ParsedNumber } from '../float/rational';
+import type { RoundOptions } from '../float/round';
+import type { FloatFormat } from '../formats/types';
 
 function decompose(x: number): { m: bigint; e: number } {
   const bits = doubleToBits(x);
@@ -66,6 +68,36 @@ export class ExactSum {
     return this;
   }
 
+  /** Adds the exact product a·b·c (all finite doubles). */
+  addProduct3(a: number, b: number, c: number): this {
+    if (!Number.isFinite(a) || !Number.isFinite(b) || !Number.isFinite(c)) {
+      this.trackNonFinite(a * b * c);
+      return this;
+    }
+    const da = decompose(a);
+    const db = decompose(b);
+    const dc = decompose(c);
+    this.addDyadic(da.m * db.m * dc.m, da.e + db.e + dc.e);
+    return this;
+  }
+
+  /** The exact value as a rational (for rounding with the BigInt path). */
+  toParsed(): ParsedNumber {
+    if (this.nonFinite !== null) {
+      return Number.isNaN(this.nonFinite) ? { kind: 'nan' } : { kind: 'inf', negative: this.nonFinite < 0 };
+    }
+    const negative = this.m < 0n;
+    const mag = negative ? -this.m : this.m;
+    return this.e >= 0
+      ? { kind: 'finite', negative, num: mag << BigInt(this.e), den: 1n }
+      : { kind: 'finite', negative, num: mag, den: 1n << BigInt(-this.e) };
+  }
+
+  /** The exact value rounded once to `fmt` (flags in `lastRound.flags`). */
+  roundTo(fmt: FloatFormat, opts: RoundOptions): number {
+    return roundParsed(fmt, this.toParsed(), opts);
+  }
+
   isZero(): boolean {
     return this.nonFinite === null && this.m === 0n;
   }
@@ -74,13 +106,7 @@ export class ExactSum {
   toNumber(): number {
     if (this.nonFinite !== null) return this.nonFinite;
     if (this.m === 0n) return 0;
-    const negative = this.m < 0n;
-    const mag = negative ? -this.m : this.m;
-    const parsed =
-      this.e >= 0
-        ? { kind: 'finite' as const, negative, num: mag << BigInt(this.e), den: 1n }
-        : { kind: 'finite' as const, negative, num: mag, den: 1n << BigInt(-this.e) };
-    return roundParsed(FLOAT_FORMATS.fp64, parsed, { mode: 'nearest-even', overflow: 'nonsaturate' });
+    return roundParsed(FLOAT_FORMATS.fp64, this.toParsed(), { mode: 'nearest-even', overflow: 'nonsaturate' });
   }
 
   clone(): ExactSum {

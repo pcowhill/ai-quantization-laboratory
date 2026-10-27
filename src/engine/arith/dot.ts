@@ -24,6 +24,9 @@ import { Rng } from '../random/prng';
 import type { RoundingMode } from '../rounding';
 import { ExactSum } from './exact';
 
+/** Below 2^-969 the error term of TwoProduct may not be representable. */
+const TWO_PRODUCT_SAFE_MIN = 2 ** -969;
+
 export type SumOrder = 'sequential' | 'pairwise' | 'blocked' | 'kahan';
 
 export interface ArithConfig {
@@ -111,13 +114,28 @@ export class ArithMachine {
 
   mul(a: number, b: number, fmt: FloatFormatId = this.cfg.productFormat): number {
     const [p, e] = twoProduct(a, b);
+    // TwoProduct is exact only when fl(a·b) neither overflows nor approaches
+    // the subnormal range; otherwise round the exact BigInt product.
+    if (Number.isFinite(a) && Number.isFinite(b) && a !== 0 && b !== 0 && (!Number.isFinite(p) || Math.abs(p) < TWO_PRODUCT_SAFE_MIN)) {
+      return this.roundExact(fmt, new ExactSum().addProduct(a, b));
+    }
     return this.round(fmt, p, e);
   }
 
   add(a: number, b: number, fmt: FloatFormatId = this.cfg.accumulatorFormat): number {
     if (!Number.isFinite(a) || !Number.isFinite(b)) return this.round(fmt, a + b);
     const [s, t] = twoSum(a, b);
+    // A finite sum that overflows binary64 must still follow the target's
+    // overflow rules (e.g. IEEE 754 §7.4 under directed rounding).
+    if (!Number.isFinite(s)) return this.roundExact(fmt, new ExactSum().add(a).add(b));
     return this.round(fmt, s, t);
+  }
+
+  /** Rounds an exactly accumulated value to `fmt`. */
+  roundExact(fmt: FloatFormatId, exact: ExactSum): number {
+    const v = exact.roundTo(FLOAT_FORMATS[fmt], this.opts);
+    this.flags |= lastRound.flags;
+    return v;
   }
 
   sub(a: number, b: number, fmt: FloatFormatId = this.cfg.accumulatorFormat): number {
@@ -171,7 +189,7 @@ export class ArithMachine {
   private pairwise(terms: ArrayLike<number>, lo: number, hi: number): number {
     const n = hi - lo;
     if (n === 0) return 0;
-    if (n === 1) return terms[lo]!;
+    if (n === 1) return this.round(this.cfg.accumulatorFormat, terms[lo]!);
     const mid = lo + Math.floor(n / 2);
     return this.add(this.pairwise(terms, lo, mid), this.pairwise(terms, mid, hi));
   }

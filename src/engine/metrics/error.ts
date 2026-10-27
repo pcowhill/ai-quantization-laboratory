@@ -13,9 +13,10 @@ import { exponentOf, pow2 } from '../float/double';
  * - Cosine similarity is undefined (null) when either vector has zero norm.
  * - SNR (dB) = 10·log10(Σx² / Σ(x − x̂)²): +Infinity when the error is exactly
  *   zero, null when the signal energy is zero.
- * - Sums of squares are accumulated after dividing by an exact power of two
- *   close to the largest magnitude, so cosine similarity and SNR neither
- *   underflow for tiny (even subnormal) values nor overflow for huge ones.
+ * - Sums of squares of x, x̂ and x − x̂ are each accumulated after dividing by
+ *   their own exact power of two near the respective largest magnitude, so
+ *   cosine similarity, SNR and MSE neither underflow for tiny (even subnormal)
+ *   values nor overflow for huge ones (unless the final result itself does).
  */
 
 export interface ErrorMetrics {
@@ -43,6 +44,8 @@ export interface ErrorMetrics {
   bias: number;
 }
 
+const LOG10_2 = 0.30102999566398119521; // log10(2)
+
 /** Hypot-style accumulation-free square root of a sum. */
 function safeSqrt(x: number): number {
   return Math.sqrt(Math.max(0, x));
@@ -55,15 +58,24 @@ export function computeErrorMetrics(
 ): ErrorMetrics {
   if (ref.length !== approx.length) throw new RangeError('Reference and approximation must have equal length');
   const n = ref.length;
-  // Exact power-of-two scale for the squared sums.
-  let peak = 0;
+  // Exact power-of-two scales for the squared sums of x, x̂ and x̂ − x.
+  let peakX = 0;
+  let peakY = 0;
+  let peakD = 0;
   for (let i = 0; i < n; i++) {
     const x = ref[i]!;
     const y = approx[i]!;
     if (!Number.isFinite(x) || !Number.isFinite(y)) continue;
-    peak = Math.max(peak, Math.abs(x), Math.abs(y));
+    peakX = Math.max(peakX, Math.abs(x));
+    peakY = Math.max(peakY, Math.abs(y));
+    peakD = Math.max(peakD, Math.abs(y - x));
   }
-  const s = peak > 0 ? pow2(exponentOf(peak)) : 1;
+  const ex = peakX > 0 ? exponentOf(peakX) : 0;
+  const ey = peakY > 0 ? exponentOf(peakY) : 0;
+  const ed = peakD > 0 && Number.isFinite(peakD) ? exponentOf(peakD) : 0;
+  const sx = pow2(ex);
+  const sy = pow2(ey);
+  const sd = pow2(ed);
   let finitePairs = 0;
   let sumAbs = 0;
   let sumSq = 0;
@@ -94,7 +106,8 @@ export function computeErrorMetrics(
     }
     const d = y - x;
     const ad = Math.abs(d);
-    const ds = y / s - x / s;
+    // (y − x)/sd: when y − x overflows, use y/sd − x/sd (sd is then 1).
+    const ds = Number.isFinite(d) ? d / sd : y / sd - x / sd;
     sumAbs += ad;
     sumSq += ds * ds;
     sumSigned += d;
@@ -112,19 +125,20 @@ export function computeErrorMetrics(
     } else {
       relUndefined++;
     }
-    const xs = x / s;
-    const ys = y / s;
+    const xs = x / sx;
+    const ys = y / sy;
     dot += xs * ys;
     nx += xs * xs;
     ny += ys * ys;
   }
-  // sumSq is in units of s²; undo the scaling (may legitimately overflow to Infinity).
-  const mse = finitePairs > 0 ? ((sumSq / finitePairs) * s) * s : NaN;
+  // sumSq is in units of sd²; undo the scaling (may legitimately overflow to Infinity).
+  const mse = finitePairs > 0 ? ((sumSq / finitePairs) * sd) * sd : NaN;
   const cosine = nx > 0 && ny > 0 ? dot / (safeSqrt(nx) * safeSqrt(ny)) : null;
   let snrDb: number | null;
   if (nx === 0) snrDb = null;
   else if (sumSq === 0) snrDb = Infinity;
-  else snrDb = 10 * log10(nx / sumSq);
+  // 10·log10((nx·sx²) / (sumSq·sd²)) with the power-of-two factors taken out exactly.
+  else snrDb = 10 * log10(nx / sumSq) + 20 * (ex - ed) * LOG10_2;
   return {
     count: n,
     finitePairs,

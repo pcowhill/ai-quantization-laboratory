@@ -253,3 +253,12 @@ describe('outlier detection', () => {
     }
   });
 });
+
+describe('regressions from independent review', () => {
+  it('a subnormal-range block gets the smallest positive scale, flagged as underflow', () => {
+    const r = quantizeTensor([3e-322, -1e-322], [1, 2], makeQuantConfig({ format: 'int8', scaleFormat: 'fp64' }));
+    expect(r.params[0]!.scale).toBe(Number.MIN_VALUE);
+    expect(r.params[0]!.scaleUnderflow).toBe(true);
+    expect(r.params[0]!.scaleOverflow).toBe(false);
+  });
+});

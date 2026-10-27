@@ -166,3 +166,9 @@ describe('integer codec', () => {
     }
   });
 });
+
+describe('regressions from independent review', () => {
+  it('FNUZ nextUp from the negative side lands on +0 (the format has no −0)', () => {
+    expect(Object.is(nextUpIn(FLOAT_FORMATS.fp8_e4m3fnuz, -(2 ** -10)), 0)).toBe(true);
+  });
+});

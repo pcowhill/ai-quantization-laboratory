@@ -67,3 +67,15 @@ describe('decimal display', () => {
     expect(shortestDecimal(FLOAT_FORMATS.fp64, 0.1)).toBe('0.1');
   });
 });
+
+describe('regressions from independent review', () => {
+  it('cosine and SNR stay defined when x and x̂ differ by hundreds of binades', () => {
+    const m = computeErrorMetrics([1e-170], [1e10]);
+    expect(m.cosine).toBeCloseTo(1, 12);
+    expect(m.snrDb).toBeCloseTo(20 * Math.log10(1e-170 / (1e10 - 1e-170)), 6);
+  });
+  it('MSE of huge but finite errors is computed without spurious overflow', () => {
+    expect(computeErrorMetrics([1e200], [3e200]).mse).toBe(Infinity); // (2e200)² genuinely overflows
+    expect(computeErrorMetrics([1e150], [3e150]).rmse).toBeCloseTo(2e150, -136);
+  });
+});

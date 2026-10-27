@@ -9,8 +9,28 @@ export interface BlockLayout {
   blockCount: number;
   /** Number of elements in each block. */
   blockSizes: Int32Array;
-  /** Human-readable description of each block, e.g. "row 3, cols 32–63". */
-  describe: (block: number) => string;
+  shape: [number, number];
+  granularity: Granularity;
+  axis: 0 | 1;
+  groupSize: number;
+}
+
+/** Human-readable description of a block, e.g. "row 3, columns 32–63". */
+export function describeBlock(layout: BlockLayout, b: number): string {
+  const [rows, cols] = layout.shape;
+  const g = Math.max(1, Math.floor(layout.groupSize));
+  if (layout.granularity === 'tensor') return 'whole tensor';
+  if (layout.granularity === 'channel') return layout.axis === 0 ? `row ${b}` : `column ${b}`;
+  if (layout.axis === 0) {
+    const perRow = Math.ceil(cols / g);
+    const r = Math.floor(b / perRow);
+    const k = b % perRow;
+    return `row ${r}, columns ${k * g}–${Math.min(cols, (k + 1) * g) - 1}`;
+  }
+  const perCol = Math.ceil(rows / g);
+  const c = Math.floor(b / perCol);
+  const k = b % perCol;
+  return `column ${c}, rows ${k * g}–${Math.min(rows, (k + 1) * g) - 1}`;
 }
 
 export function computeLayout(
@@ -23,19 +43,15 @@ export function computeLayout(
   const n = rows * cols;
   const blockOf = new Int32Array(n);
   let blockCount: number;
-  let describe: (b: number) => string;
   if (granularity === 'tensor') {
     blockCount = 1;
-    describe = () => 'whole tensor';
   } else if (granularity === 'channel') {
     if (axis === 0) {
       blockCount = rows;
       for (let r = 0; r < rows; r++) blockOf.fill(r, r * cols, (r + 1) * cols);
-      describe = (b) => `row ${b}`;
     } else {
       blockCount = cols;
       for (let r = 0; r < rows; r++) for (let c = 0; c < cols; c++) blockOf[r * cols + c] = c;
-      describe = (b) => `column ${b}`;
     }
   } else {
     const g = Math.max(1, Math.floor(groupSize));
@@ -44,26 +60,16 @@ export function computeLayout(
       blockCount = rows * perRow;
       for (let r = 0; r < rows; r++)
         for (let c = 0; c < cols; c++) blockOf[r * cols + c] = r * perRow + Math.floor(c / g);
-      describe = (b) => {
-        const r = Math.floor(b / perRow);
-        const k = b % perRow;
-        return `row ${r}, columns ${k * g}–${Math.min(cols, (k + 1) * g) - 1}`;
-      };
     } else {
       const perCol = Math.ceil(rows / g);
       blockCount = cols * perCol;
       for (let r = 0; r < rows; r++)
         for (let c = 0; c < cols; c++) blockOf[r * cols + c] = c * perCol + Math.floor(r / g);
-      describe = (b) => {
-        const c = Math.floor(b / perCol);
-        const k = b % perCol;
-        return `column ${c}, rows ${k * g}–${Math.min(rows, (k + 1) * g) - 1}`;
-      };
     }
   }
   const blockSizes = new Int32Array(blockCount);
   for (let i = 0; i < n; i++) blockSizes[blockOf[i]!]!++;
-  return { blockOf, blockCount, blockSizes, describe };
+  return { blockOf, blockCount, blockSizes, shape: [rows, cols], granularity, axis, groupSize };
 }
 
 /** Gathers the values of each block (preserving element order). */

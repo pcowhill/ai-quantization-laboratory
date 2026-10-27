@@ -352,3 +352,17 @@ describe('stochastic rounding', () => {
     for (let i = 0; i < 100; i++) expect(roundFloat(FLOAT_FORMATS.fp16, 0.5, { mode: 'stochastic', rng: () => rng.next() })).toBe(0.5);
   });
 });
+
+describe('regressions from independent review', () => {
+  it('exact ties supplied through the tail at 53-bit precision', () => {
+    const f = FLOAT_FORMATS.fp64;
+    expect(roundFloat(f, 1 + 2 ** -52, { mode: 'nearest-even' }, -(2 ** -53))).toBe(1);
+    expect(roundFloat(f, 1 + 2 ** -52, { mode: 'nearest-even' }, 2 ** -53)).toBe(1 + 2 ** -51);
+  });
+  it('fractions combine exponents before clamping', () => {
+    expect(roundString(FLOAT_FORMATS.fp64, '1e6500/1e6400', { mode: 'nearest-even' })).toBe(1e100);
+    expect(roundString(FLOAT_FORMATS.fp64, '1e-7000/1e-7100', { mode: 'nearest-even' })).toBe(1e100);
+    expect(roundString(FLOAT_FORMATS.fp64, '1e99999', { mode: 'nearest-even', overflow: 'nonsaturate' })).toBe(Infinity);
+    expect(roundString(FLOAT_FORMATS.fp64, '1e-99999', { mode: 'nearest-even' })).toBe(0);
+  });
+});

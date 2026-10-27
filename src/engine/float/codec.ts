@@ -222,7 +222,7 @@ export function nextUpIn(fmt: FloatFormat, value: number): number | null {
   // Positive values move up by incrementing the pattern; negative ones by decrementing.
   const next = value > 0 ? bits + 1n : bits - 1n;
   const v = decode(fmt, next).value;
-  if (value < 0 && (next & ~signMask) === 0n) return -0;
+  if (value < 0 && (next & ~signMask) === 0n) return c.hasNegativeZero ? -0 : 0;
   return v;
 }
 

@@ -101,7 +101,7 @@ x̂ = s · (q − z)
 
 **Floating-point targets (scaled conversion):** q = convert(x / s), x̂ = s · q. Without scaling, it is a plain cast: q = convert(x).
 
-`x / s` and `s · (q − z)` are evaluated in FP64 (correctly rounded). `round` uses the selected rounding mode exactly. NaN inputs map to q = z (integer) or follow the format rules (float), and are flagged `Invalid`. ±Inf inputs clamp.
+`x / s` and `s · (q − z)` are evaluated in FP64 (correctly rounded). `round` uses the selected rounding mode exactly. NaN inputs map to q = z (integer) or follow the format rules (float), and are flagged `Invalid`. ±Inf inputs clamp to qmin/qmax for integer targets; floating-point targets follow the overflow policy (±max when saturating, otherwise ±Inf or NaN).
 
 ### Granularity
 
@@ -121,16 +121,16 @@ Calibration chooses a clipping range per block from its finite values:
 
 - **Min/max.** Symmetric: amax = max|x|. Asymmetric: [min(x_min, 0), max(x_max, 0)]. The range always includes 0, so 0 is exactly representable.
 - **Percentile p.** Symmetric: amax = P_p(|x|). Asymmetric: [P_(100−p)(x), P_p(x)], extended to include 0. P uses linear interpolation between closest ranks (Hyndman–Fan type 7, NumPy's default).
-- **MSE grid search.** Evaluate the clipping ratios α_k = αmin + (1 − αmin)·k/N for k = 1…N (α = 1 is min/max). Scale the min/max range by α_k, quantize the block with RNE, and keep the candidate with the smallest mean squared error. Ties go to the larger α. *This is a grid search over one parameter. It finds the best candidate on the grid, not a proven global optimum.*
+- **MSE grid search.** Evaluate the clipping ratios α_k = αmin + (1 − αmin)·k/N for k = 1…N (α = 1 is min/max). Scale the min/max range by α_k, quantize the block with the configured rounding mode (RNE when stochastic rounding is selected, so the search is deterministic), and keep the candidate with the smallest mean squared error. Ties go to the larger α. *This is a grid search over one parameter. It finds the best candidate on the grid, not a proven global optimum.*
 - **Manual.** The user-supplied s, and z for asymmetric schemes, are used verbatim. s must be finite and positive; z must be an integer within [qmin, qmax]. Invalid values are rejected, never corrected.
-- **MX power-of-two rule** (OCP MX v1.0 §6.3): X = 2^(⌊log2 max|V|⌋ − e_max,elem), where e_max,elem is the exponent of the largest power of two representable in the element type. That is 2 for FP4, 8 for E4M3, 15 for E5M2, and 6 for INT8 (127 ≥ 2^6). X is clamped to the E8M0 range 2^−127 … 2^127. Elements that exceed the element max after scaling are clamped (saturated), as §6.3 requires. With block size 32, element FP4 E2M1, an E8M0 scale, RNE and saturation, this is MXFP4 as specified in §6.3. MXFP8 (E4M3/E5M2) follows the same pattern.
+- **MX power-of-two rule** (OCP MX v1.0 §6.3): X = 2^(⌊log2 max|V|⌋ − e_max,elem), where e_max,elem is the exponent of the largest power of two representable in the element type. That is 2 for FP4, 8 for E4M3, 15 for E5M2, and 6 for INT8 (127 ≥ 2^6). X is clamped to the E8M0 range 2^−127 … 2^127. An all-zero block gets X = 2^−127 and is flagged degenerate. Elements that exceed the element max after scaling are clamped (saturated), as §6.3 requires. With block size 32, element FP4 E2M1, an E8M0 scale, RNE and saturation, this is MXFP4 as specified in §6.3. MXFP8 (E4M3/E5M2) follows the same pattern.
 
 Scale computation from the chosen range:
 
 - Symmetric: s = amax / q_max_grid, where q_max_grid is 127, 7, or the element format's max finite value.
 - Asymmetric: s = (hi − lo) / (qmax − qmin), and z = clamp(RNE(qmin − lo / s), qmin, qmax).
 
-Scales are then **rounded to the scale storage format**: FP64, FP32, FP16 and BF16 use RNE with saturation. A scale that underflows to 0 is replaced by the smallest subnormal and flagged. For E8M0, the scale is rounded *up* to a power of two so that the calibrated range is still covered. z is computed with the stored scale.
+Scales are then **rounded to the scale storage format**: FP64, FP32, FP16 and BF16 use RNE with saturation. A scale that underflows to 0, either when computed in FP64 or when rounded to the storage format, is replaced by that format's smallest subnormal and flagged; a scale that overflows FP64 is replaced by the largest double and flagged. For E8M0, the scale is rounded *up* to a power of two so that the calibrated range is still covered. z is computed with the stored scale.
 
 **Degenerate blocks** (all zeros) use s = 1. Every scale reproduces zeros exactly, and the block is flagged `degenerate`. A constant non-zero block is not degenerate: its range [0, c] or [−c, c] is handled normally and reconstructs c to within FP64 rounding.
 
@@ -148,14 +148,14 @@ All metrics compare a reference x with an approximation x̂ (`src/engine/metrics
 - **SNR** is 10·log10(Σx² / Σ(x − x̂)²) dB. It is +∞ when the error is exactly zero and undefined when Σx² = 0.
 - **Zero rate** is the fraction of x̂ equal to ±0. **Zero-collapse rate** is the fraction of non-zero x whose x̂ is 0.
 - **Saturation rate** is the fraction of elements that were clamped or saturated, or that overflowed.
-- Sums of squares are accumulated after dividing by an exact power of two near the largest magnitude, so neither tiny (subnormal) nor huge values underflow or overflow the intermediate sums.
+- Sums of squares of x, x̂ and x − x̂ are each accumulated after dividing by their own exact power of two near the respective largest magnitude, so neither tiny (subnormal) nor huge values underflow or overflow the intermediate sums.
 
 ## 6. Simulated arithmetic
 
 `src/engine/arith/` applies these rules exactly:
 
-- **Products:** a·b is computed exactly (Dekker TwoProduct) and rounded once to the *product format*.
-- **Sums:** acc + p is computed exactly (Knuth TwoSum) and rounded once to the *accumulator format*. Directed rounding of arithmetic results is therefore exact: the error term acts as a sticky bit, so no double rounding occurs.
+- **Products:** a·b is computed exactly (Dekker TwoProduct; when the binary64 product overflows or comes within 2^53 of the subnormal range, the exact BigInt product is used instead) and rounded once to the *product format*.
+- **Sums:** acc + p is computed exactly (Knuth TwoSum; exact BigInt sum when the binary64 sum overflows) and rounded once to the *accumulator format*, so overflow follows the target's rules, including IEEE 754 §7.4 under directed rounding. Directed rounding of arithmetic results is therefore exact: the error term acts as a sticky bit, so no double rounding occurs.
 - **Summation orders:**
   - *sequential* (left to right);
   - *pairwise* (balanced tree);
@@ -163,7 +163,7 @@ All metrics compare a reference x with an approximation x̂ (`src/engine/metrics
   - *Kahan* (compensated, with every operation rounded to the accumulator format).
 - **Output:** the result is rounded to the *output format*.
 - **Exact reference:** the exact dot product of the stored operands is computed with BigInt dyadic arithmetic and rounded once to FP64. This lets the UI split the error into a storage part (exact(x̂) − exact(x)) and an arithmetic part (simulated − exact(x̂)).
-- **Integer path** (INT8/INT4 operands): C[i,j] = Σ_segments s_A s_B Σ_k (q_A − z_A)(q_B − z_B). A segment is a run of k with a single scale per operand. The integer sums use an INT32 accumulator, which can be set to wrap, saturate or stay exact. Overflow is detected and reported.
+- **Integer path** (INT8/INT4 operands): C[i,j] = Σ_segments s_A s_B Σ_k (q_A − z_A)(q_B − z_B). A segment is a run of k with a single scale per operand. The integer sums use an INT32 accumulator, which can be set to wrap, saturate or stay exact. Overflow is detected and reported. Each rescaled segment s_A·s_B·Σ is formed exactly and rounded once to the rescale format.
 
 These rules model a machine that rounds after every operation. They are **not** claimed to match any particular GPU instruction.
 
