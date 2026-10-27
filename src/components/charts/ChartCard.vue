@@ -29,7 +29,7 @@ const visibleRows = () => (props.rows ?? []).slice(0, props.maxRows);
       </div>
     </figcaption>
     <p v-if="caption" class="chart-caption">{{ caption }}</p>
-    <div v-if="showTable && columns && rows" class="table-wrap chart-table">
+    <div v-if="showTable && columns && rows" class="table-wrap chart-table" tabindex="0" role="region" :aria-label="`Data table: ${title}`">
       <table class="table">
         <thead>
           <tr><th v-for="c in columns" :key="c" scope="col">{{ c }}</th></tr>

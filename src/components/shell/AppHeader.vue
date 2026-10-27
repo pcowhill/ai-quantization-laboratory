@@ -76,7 +76,7 @@ function onTabKey(e: KeyboardEvent, index: number) {
       </button>
       <button type="button" class="btn btn-ghost btn-icon" :disabled="!exps.canUndo" title="Undo (Ctrl+Z)" aria-label="Undo" data-testid="undo" @click="exps.undo()"><Icon name="undo" /></button>
       <button type="button" class="btn btn-ghost btn-icon" :disabled="!exps.canRedo" title="Redo (Ctrl+Shift+Z)" aria-label="Redo" data-testid="redo" @click="exps.redo()"><Icon name="redo" /></button>
-      <button type="button" class="btn" data-testid="open-lessons" @click="ui.lessonsOpen = true">
+      <button type="button" class="btn" data-testid="open-lessons" aria-label="Guided lessons" title="Guided lessons" @click="ui.lessonsOpen = true">
         <Icon name="cap" /><span class="hide-sm">Lessons</span>
       </button>
       <button type="button" class="btn btn-ghost btn-icon" :title="themeLabel" :aria-label="themeLabel" data-testid="theme-toggle" @click="ui.cycleTheme()"><Icon :name="themeIcon" /></button>

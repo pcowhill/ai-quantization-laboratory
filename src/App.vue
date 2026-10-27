@@ -1,20 +1,27 @@
 <script setup lang="ts">
-import { defineAsyncComponent, onBeforeUnmount, onMounted } from 'vue';
+import { defineAsyncComponent, h, onBeforeUnmount, onMounted, type Component } from 'vue';
+import AsyncState from '@/components/common/AsyncState.vue';
 import AppHeader from '@/components/shell/AppHeader.vue';
 import { LABS } from '@/state/schema';
 import { useExperimentsStore } from '@/stores/experiments';
 import { useLabStore } from '@/stores/lab';
 import { useLessonsStore } from '@/stores/lessons';
 import { useUiStore } from '@/stores/ui';
+import { applyUpdate, dismissUpdate, setBeforeReload, updateReady } from '@/pwa/register';
 
-const NumberInspector = defineAsyncComponent(() => import('@/components/inspector/NumberInspector.vue'));
-const QuantWorkbench = defineAsyncComponent(() => import('@/components/workbench/QuantWorkbench.vue'));
-const MatrixLab = defineAsyncComponent(() => import('@/components/matrix/MatrixLab.vue'));
-const NetworkLab = defineAsyncComponent(() => import('@/components/network/NetworkLab.vue'));
-const ExperimentPanel = defineAsyncComponent(() => import('@/components/experiments/ExperimentPanel.vue'));
-const LessonPanel = defineAsyncComponent(() => import('@/components/lessons/LessonPanel.vue'));
-const LessonCatalog = defineAsyncComponent(() => import('@/components/lessons/LessonCatalog.vue'));
-const HelpDialog = defineAsyncComponent(() => import('@/components/shell/HelpDialog.vue'));
+/** Lazily loaded component with a loading placeholder and a visible load error. */
+function lazy(loader: () => Promise<{ default: Component }>) {
+  return defineAsyncComponent({ loader, delay: 150, loadingComponent: AsyncState, errorComponent: () => h(AsyncState, { failed: true }) });
+}
+
+const NumberInspector = lazy(() => import('@/components/inspector/NumberInspector.vue'));
+const QuantWorkbench = lazy(() => import('@/components/workbench/QuantWorkbench.vue'));
+const MatrixLab = lazy(() => import('@/components/matrix/MatrixLab.vue'));
+const NetworkLab = lazy(() => import('@/components/network/NetworkLab.vue'));
+const ExperimentPanel = lazy(() => import('@/components/experiments/ExperimentPanel.vue'));
+const LessonPanel = lazy(() => import('@/components/lessons/LessonPanel.vue'));
+const LessonCatalog = lazy(() => import('@/components/lessons/LessonCatalog.vue'));
+const HelpDialog = lazy(() => import('@/components/shell/HelpDialog.vue'));
 
 const lab = useLabStore();
 const exps = useExperimentsStore();
@@ -48,11 +55,33 @@ function onKey(e: KeyboardEvent) {
   }
 }
 
+/** Saves pending edits; used before a version-change reload and when the page is hidden or closed. */
+async function savePending() {
+  if (!exps.ready) return;
+  exps.flushHistory();
+  await exps.saveCurrent();
+}
+setBeforeReload(savePending);
+
+function reloadForUpdate() {
+  void applyUpdate();
+}
+
+function onVisibility() {
+  if (document.visibilityState === 'hidden') void savePending();
+}
+
 onMounted(() => {
   void exps.init();
   window.addEventListener('keydown', onKey);
+  document.addEventListener('visibilitychange', onVisibility);
+  window.addEventListener('pagehide', savePending);
 });
-onBeforeUnmount(() => window.removeEventListener('keydown', onKey));
+onBeforeUnmount(() => {
+  window.removeEventListener('keydown', onKey);
+  document.removeEventListener('visibilitychange', onVisibility);
+  window.removeEventListener('pagehide', savePending);
+});
 </script>
 
 <template>
@@ -76,6 +105,11 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onKey));
     <ExperimentPanel v-if="ui.experimentsOpen" />
     <LessonCatalog v-if="ui.lessonsOpen" />
     <HelpDialog v-if="ui.helpOpen" />
+    <div v-if="updateReady" class="update-bar" role="status" data-testid="update-ready">
+      A new version of the laboratory is available. Your experiments are kept.
+      <button type="button" class="btn btn-sm btn-primary" @click="reloadForUpdate">Reload now</button>
+      <button type="button" class="btn btn-sm btn-ghost" @click="dismissUpdate">Later</button>
+    </div>
     <div class="toasts" aria-live="polite">
       <div v-for="t in ui.toasts" :key="t.id" class="toast" :class="t.kind" role="status">{{ t.text }}</div>
     </div>
@@ -117,6 +151,24 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onKey));
 .skip-link:focus {
   left: 8px;
 }
+.update-bar {
+  position: fixed;
+  left: 50%;
+  bottom: 16px;
+  transform: translateX(-50%);
+  z-index: 210;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+  max-width: calc(100vw - 32px);
+  padding: 8px 10px 8px 14px;
+  border-radius: var(--radius);
+  background: var(--surface);
+  border: 1px solid var(--accent);
+  box-shadow: var(--shadow-2);
+  font-size: 13px;
+}
 .toasts {
   position: fixed;
   bottom: 16px;
@@ -138,7 +190,7 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onKey));
 }
 .toast.error {
   background: var(--critical);
-  color: #fff;
+  color: var(--text-on-critical);
 }
 .toast.success {
   background: var(--accent);

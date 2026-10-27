@@ -68,8 +68,10 @@ const best = computed(() => {
       <tbody>
         <tr v-for="r in rows" :key="r.v.id" :class="{ selected: r.v.id === active }" style="cursor: pointer" @click="emit('select', r.v.id)">
           <th scope="row">
-            <span class="sw" :style="{ background: `var(--series-${variantSlot(r.v.id) + 1})` }" aria-hidden="true" />
-            {{ r.v.name }}
+            <button type="button" class="row-select" :aria-pressed="r.v.id === active" :title="`Edit ${r.v.name}`" @click.stop="emit('select', r.v.id)">
+              <span class="sw" :style="{ background: `var(--series-${variantSlot(r.v.id) + 1})` }" aria-hidden="true" />
+              {{ r.v.name }}
+            </button>
           </th>
           <template v-if="r.e && r.e.metrics">
             <td v-for="c in cols" :key="c.key" class="num" :class="{ best: best[c.key] !== null && c.get(r.e) === best[c.key] }" :data-metric="c.key">

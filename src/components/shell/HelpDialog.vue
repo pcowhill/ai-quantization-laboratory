@@ -1,11 +1,23 @@
 <script setup lang="ts">
 import Drawer from '@/components/common/Drawer.vue';
 import { PRIMARY_FORMAT_IDS, getFormat } from '@/engine/formats/registry';
+import { onMounted, ref } from 'vue';
+import { offlineStatus, type OfflineStatus } from '@/pwa/register';
 import { useUiStore } from '@/stores/ui';
 
 const ui = useUiStore();
 const repo = 'https://github.com/pcowhill/ai-quantization-laboratory';
 const version = import.meta.env.VITE_APP_VERSION ?? 'dev';
+const offline = ref<OfflineStatus | null>(null);
+onMounted(async () => (offline.value = await offlineStatus()));
+const offlineText: Record<OfflineStatus['state'], string> = {
+  ready: 'Ready to work offline: every application file is stored in this browser.',
+  incomplete: 'Not yet fully available offline: some application files are still missing from the offline cache.',
+  installing: 'Offline support is still being installed; reload once while online to finish.',
+  unsupported: 'This browser does not support offline use (no service workers).',
+  development: 'Offline support is disabled in the development server.',
+  error: 'The offline status could not be determined.',
+};
 </script>
 
 <template>
@@ -53,10 +65,17 @@ const version = import.meta.env.VITE_APP_VERSION ?? 'dev';
       <h3>Learn more</h3>
       <ul>
         <li><a :href="`${repo}/blob/main/docs/NUMERICS.md`" target="_blank" rel="noopener noreferrer">Numerical conventions and algorithms</a></li>
+        <li><a :href="`${repo}/blob/main/docs/EXPERIMENT_FORMAT.md`" target="_blank" rel="noopener noreferrer">Experiment file format</a></li>
+        <li><a :href="`${repo}/blob/main/docs/ARCHITECTURE.md`" target="_blank" rel="noopener noreferrer">Architecture</a></li>
         <li><a :href="`${repo}/blob/main/README.md`" target="_blank" rel="noopener noreferrer">Project README</a></li>
         <li><a :href="repo" target="_blank" rel="noopener noreferrer">Source code</a></li>
       </ul>
-      <p class="muted small">Version {{ version }}. Works offline after the first visit.</p>
+      <h3>Offline use</h3>
+      <p data-testid="offline-status" :data-state="offline?.state">
+        {{ offline ? offlineText[offline.state] : 'Checking…' }}
+        <span v-if="offline?.total" class="muted small">({{ offline.cached }} of {{ offline.total }} files, build {{ offline.version }})</span>
+      </p>
+      <p class="muted small">Version {{ version }}. There is no server-side component: computations, experiments and imported data stay on this device.</p>
     </div>
   </Drawer>
 </template>

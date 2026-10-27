@@ -52,7 +52,8 @@ const model = defineModel<T>({ required: true });
 .segmented button:hover:not(:disabled) {
   background: var(--surface-3);
 }
-.segmented button.active {
+.segmented button.active,
+.segmented button.active:hover:not(:disabled) {
   background: var(--accent);
   color: var(--text-on-accent);
   font-weight: 600;
